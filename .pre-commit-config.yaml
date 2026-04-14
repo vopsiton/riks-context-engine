@@ -11,5 +11,5 @@ repos:
     rev: v0.1.0
     hooks:
       - id: ruff
-        args: [--fix]
+        # args: [--fix]  # removed --fix: causes CI to fail when auto-fixed
       - id: ruff-format
