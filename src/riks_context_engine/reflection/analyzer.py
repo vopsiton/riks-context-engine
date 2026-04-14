@@ -39,7 +39,7 @@ class ReflectionAnalyzer:
     was missing.
     """
 
-    def __init__(self, semantic_memory: object | None = None) -> None:
+    def __init__(self, semantic_memory=None):
         self.semantic_memory = semantic_memory
 
     def analyze(self, interaction_id: str, conversation: list[dict]) -> ReflectionReport:

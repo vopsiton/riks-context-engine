@@ -35,7 +35,6 @@ def main() -> int:
 
     if args.version:
         from riks_context_engine import __version__
-
         print(f"riks-context-engine {__version__}")
         return 0
 
