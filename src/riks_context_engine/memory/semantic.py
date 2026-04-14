@@ -28,7 +28,9 @@ class SemanticMemory:
     def __init__(self, db_path: str | None = None):
         self.db_path = db_path or "data/semantic.db"
 
-    def add(self, subject: str, predicate: str, object: str | None = None, confidence: float = 1.0) -> SemanticEntry:
+    def add(
+        self, subject: str, predicate: str, object: str | None = None, confidence: float = 1.0
+    ) -> SemanticEntry:
         """Add a semantic knowledge entry."""
         now = datetime.now(timezone.utc)
         entry = SemanticEntry(
@@ -42,7 +44,9 @@ class SemanticMemory:
         )
         return entry
 
-    def query(self, subject: str | None = None, predicate: str | None = None) -> list[SemanticEntry]:
+    def query(
+        self, subject: str | None = None, predicate: str | None = None
+    ) -> list[SemanticEntry]:
         """Query semantic memory."""
         return []
 

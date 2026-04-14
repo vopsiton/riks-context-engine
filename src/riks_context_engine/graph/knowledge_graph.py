@@ -61,7 +61,9 @@ class KnowledgeGraph:
         self._entities: dict[str, Entity] = {}
         self._relationships: dict[str, Relationship] = {}
 
-    def add_entity(self, name: str, entity_type: EntityType, properties: dict | None = None) -> Entity:
+    def add_entity(
+        self, name: str, entity_type: EntityType, properties: dict | None = None
+    ) -> Entity:
         """Add an entity to the graph."""
         entity = Entity(
             id=f"{entity_type.value}_{name.lower().replace(' ', '_')}",
@@ -90,7 +92,9 @@ class KnowledgeGraph:
         self._relationships[rel.id] = rel
         return rel
 
-    def query(self, entity_name: str | None = None, relationship_type: RelationshipType | None = None) -> list[Entity | Relationship]:
+    def query(
+        self, entity_name: str | None = None, relationship_type: RelationshipType | None = None
+    ) -> list[Entity | Relationship]:
         """Query the knowledge graph."""
         return []
 

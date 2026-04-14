@@ -1,6 +1,5 @@
 """Tests for knowledge graph module."""
 
-
 from riks_context_engine.graph.knowledge_graph import (
     EntityType,
     KnowledgeGraph,

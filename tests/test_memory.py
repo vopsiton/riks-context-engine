@@ -1,7 +1,5 @@
 """Tests for memory module."""
 
-
-
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
