@@ -47,7 +47,9 @@ class TestContextWindowManager:
 
     def test_validate_coherence(self):
         mgr = ContextWindowManager(max_tokens=10_000)
-        valid, score = mgr.validate_coherence(); assert valid is True
+        result = mgr.validate_coherence()
+        assert result[0] is True
+        assert result[1] == 1.0
 
     def test_tokens_remaining(self):
         mgr = ContextWindowManager(max_tokens=50_000)
@@ -196,7 +198,8 @@ class TestContextWindowManager:
         # Just verify the validator works with valid state
         mgr.add(role="user", content="Hello")
         mgr.add(role="assistant", content="Hi there")
-        valid, score = mgr.validate_coherence(); assert valid is True
+        result = mgr.validate_coherence()
+        assert result[0] is True
 
 
 class TestContextMessage:
