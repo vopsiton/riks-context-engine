@@ -1,12 +1,10 @@
 """Tests for memory module."""
 
-from datetime import datetime
 
-import pytest
 
-from riks_context_engine.memory.episodic import EpisodicEntry, EpisodicMemory
-from riks_context_engine.memory.semantic import SemanticEntry, SemanticMemory
-from riks_context_engine.memory.procedural import Procedure, ProceduralMemory
+from riks_context_engine.memory.episodic import EpisodicMemory
+from riks_context_engine.memory.procedural import ProceduralMemory
+from riks_context_engine.memory.semantic import SemanticMemory
 
 
 class TestEpisodicMemory:
