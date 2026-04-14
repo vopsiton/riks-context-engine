@@ -1,22 +1,140 @@
 """Context window manager - intelligent pruning and coherence."""
 
+from __future__ import annotations
+
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+
+# -------------------------------------------------------------------
+# Importance Scorer
+# -------------------------------------------------------------------
+
+class ImportanceScorer:
+    """Scores message importance based on content analysis.
+
+    Scoring dimensions:
+    - user_mentions   : User explicitly refers to something important
+    - new_information : Message introduces new facts or data
+    - decisions       : Message captures a decision or commitment
+    - tool_result     : Tool output (usually worth preserving)
+    """
+
+    # Patterns that indicate high importance
+    DECISION_PATTERNS = [
+        re.compile(r"\b(decided|decision|chose|choice|agreed|will do|going to)\b", re.I),
+        re.compile(r"\b(important|remember|must|never|always)\b", re.I),
+        re.compile(r"\b(todo|task|goal|plan|schedule)\b", re.I),
+        re.compile(r"\b(create|delete|update|fix|build|implement)\b", re.I),
+        re.compile(r"\bcommit\s+(to|that)\b", re.I),
+        re.compile(r"\b(i'?ll|i will|we should|let'?s)\b", re.I),
+    ]
+
+    NEW_INFO_PATTERNS = [
+        re.compile(r"\b(learned|found|discovered|realized|figured out)\b", re.I),
+        re.compile(r"\b(result|output|response|answer|returned)\b", re.I),
+        re.compile(r"\b(error|typeerror|exception|failed|crashed|issue|bug)\b", re.I),
+        re.compile(r"\b(ip|address|port|token|key|config)\b", re.I),
+        re.compile(r"\b(http|localhost|127\.0\.0\.1|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", re.I),
+    ]
+
+    USER_MENTION_PATTERNS = [
+        re.compile(r"\b(prefer|preference|hate|like|want|need|don.t)\b", re.I),
+        re.compile(r"\b(prefer|preference|hate|like|want|need|don.t)\b", re.I),
+        re.compile(r"\b(never|always|every time|never again)\b", re.I),
+        re.compile(r"\b(user|account|profile|settings|preferences)\b", re.I),
+    ]
+
+    TOOL_RESULT_INDICATORS = [
+        "tool_use", "tool_call", "function_call",
+        "<function>", "<tool>", "```output",
+    ]
+
+    @classmethod
+    def score(cls, content: str, role: str) -> tuple[float, dict[str, float]]:
+        """Calculate importance score for a message.
+
+        Args:
+            content: Message text content
+            role: Message role ("user", "assistant", "system", "tool")
+
+        Returns:
+            Tuple of (overall_score 0.0-1.0, dimension_scores dict)
+        """
+        dims = {
+            "user_mentions": cls._score_user_mentions(content),
+            "new_information": cls._score_new_info(content),
+            "decisions": cls._score_decisions(content),
+            "tool_result": cls._score_tool_result(content, role),
+        }
+
+        # Weighted average
+        weights = {"user_mentions": 0.35, "new_information": 0.25, "decisions": 0.25, "tool_result": 0.15}
+        overall = sum(dims[k] * weights[k] for k in weights)
+
+        return (round(overall, 3), dims)
+
+    @classmethod
+    def _score_user_mentions(cls, content: str) -> float:
+        score = 0.0
+        for pat in cls.USER_MENTION_PATTERNS:
+            if pat.search(content):
+                score += 0.3
+        return min(score, 1.0)
+
+    @classmethod
+    def _score_new_info(cls, content: str) -> float:
+        score = 0.0
+        for pat in cls.NEW_INFO_PATTERNS:
+            if pat.search(content):
+                score += 0.25
+        return min(score, 1.0)
+
+    @classmethod
+    def _score_decisions(cls, content: str) -> float:
+        score = 0.0
+        for pat in cls.DECISION_PATTERNS:
+            if pat.search(content):
+                score += 0.3
+        return min(score, 1.0)
+
+    @classmethod
+    def _score_tool_result(cls, content: str, role: str) -> float:
+        if role in ("tool", "system"):
+            return 0.8
+        for indicator in cls.TOOL_RESULT_INDICATORS:
+            if indicator in content:
+                return 0.6
+        return 0.0
+
+    @classmethod
+    def auto_importance(cls, content: str, role: str) -> float:
+        """Convenience: returns just the overall importance score."""
+        score, _ = cls.score(content, role)
+        return score
+
+
+# -------------------------------------------------------------------
+# Context Message & Stats
+# -------------------------------------------------------------------
 
 @dataclass
 class ContextMessage:
     """A message in the context window."""
 
     id: str
-    role: str  # "user" | "assistant" | "system"
+    role: str  # "user" | "assistant" | "system" | "tool"
     content: str
     timestamp: datetime
     importance: float = 0.5  # 0.0 - 1.0
     tokens: int = 0
     is_grounding: bool = False  # User preferences, active projects
     is_pruned: bool = False  # Message has been pruned from active context
+
+    # Importance dimension breakdown (for debugging/auditing)
+    importance_dims: dict[str, float] = field(default_factory=dict)
 
     # Priority tiers for pruning decisions
     priority_tier: int = 1  # 0=highest (never prune), 1=high, 2=medium, 3=low
@@ -39,6 +157,7 @@ class ContextStats:
     max_tokens: int
     messages_count: int
     active_messages_count: int  # Not pruned
+    usage_percent: float = 0.0  # Derived: current_tokens / max_tokens
     pruning_count: int = 0
     last_prune_timestamp: Optional[datetime] = None
 
@@ -193,11 +312,14 @@ class ContextWindowManager:
     def _update_stats(self) -> None:
         """Update context statistics."""
         active = [m for m in self.messages if not m.is_pruned]
+        current = sum(m.tokens for m in active)
+        usage_pct = (current / self.max_tokens * 100) if self.max_tokens > 0 else 0.0
         self.stats = ContextStats(
-            current_tokens=sum(m.tokens for m in active),
+            current_tokens=current,
             max_tokens=self.max_tokens,
             messages_count=len(self.messages),
             active_messages_count=len(active),
+            usage_percent=round(usage_pct, 2),
             pruning_count=self._total_pruning_events,
         )
 
@@ -232,40 +354,117 @@ class ContextWindowManager:
 
         self._update_stats()
 
-    def validate_coherence(self) -> bool:
+    def validate_coherence(self) -> tuple[bool, float]:
         """Validate conversation coherence after pruning.
 
         Ensures:
         - At least one message from each turn remains
         - No orphaned assistant responses
         - Grounding messages preserved
+
+        Returns:
+            Tuple of (is_valid: bool, coherence_score: float 0.0-1.0)
         """
         active = self.get_messages()
 
         # Empty context is valid (just not useful)
         if not active:
-            return True
+            return (True, 1.0)
 
         # Check for orphaned messages (assistant without preceding user)
-        # Skip first message
         seen_user = any(m.role == "user" for m in active)
+        orphaned = False
         for i, msg in enumerate(active):
             if msg.role == "assistant" and i == 0:
                 continue  # First message can be assistant
             if msg.role == "assistant" and not seen_user:
-                return False
+                orphaned = True
+                break
             if msg.role == "user":
                 seen_user = True
 
         # Ensure grounding messages are present if any were added
         grounding_messages = [m for m in self.messages if m.is_grounding]
-        if grounding_messages and not any(m.is_grounding and not m.is_pruned for m in self.messages):
-            return False
+        grounding_lost = bool(grounding_messages and not any(
+            m.is_grounding and not m.is_pruned for m in self.messages
+        ))
 
-        return True
+        # Check for consecutive same-role messages (unusual but sometimes valid)
+        consecutive_breaks = 0
+        for i in range(1, len(active)):
+            if active[i].role == active[i - 1].role and active[i].role not in ("system", "tool"):
+                consecutive_breaks += 1
+
+        # Calculate coherence score
+        is_valid = not orphaned and not grounding_lost
+
+        # Score components (each reduces score)
+        score = 1.0
+        if orphaned:
+            score -= 0.4
+        if grounding_lost:
+            score -= 0.4
+        # Penalize consecutive same-role (excluding system/tool)
+        total_pairs = max(len(active) - 1, 1)
+        consecutive_ratio = consecutive_breaks / total_pairs
+        score -= consecutive_ratio * 0.2
+
+        return (is_valid, round(max(score, 0.0), 3))
+
+    def get_usage_percent(self) -> float:
+        """Get context usage as a percentage of max_tokens.
+
+        Returns:
+            Usage percentage (0.0 - 100.0+), can exceed 100 when over-provisioned.
+        """
+        return self.stats.usage_percent
+
+    def get_pruning_recommendation(self) -> dict[str, any]:
+        """Get a recommendation on pruning action.
+
+        Analyzes current context state and returns a recommendation dict
+        with action level, tokens_to_free, and priority targets.
+
+        Returns:
+            Dict with recommendation details
+        """
+        usage = self.get_usage_percent()
+        remaining = self.tokens_remaining()
+
+        if usage < 60:
+            level = "none"
+            tokens_to_free = 0
+        elif usage < 80:
+            level = "advisory"
+            tokens_to_free = int(self.max_tokens * 0.10)
+        elif usage < 95:
+            level = "recommended"
+            tokens_to_free = int(self.max_tokens * 0.20)
+        else:
+            level = "critical"
+            tokens_to_free = remaining + int(self.max_tokens * 0.15)
+
+        # Suggest which priority tiers to target
+        tier_targets = []
+        if level in ("advisory", "recommended", "critical"):
+            tier_targets = [3]  # Always start with tier 3
+            if level in ("recommended", "critical"):
+                tier_targets.append(2)
+            if level == "critical":
+                tier_targets.append(1)  # Only in emergencies
+
+        return {
+            "level": level,
+            "usage_percent": usage,
+            "tokens_to_free": max(tokens_to_free, 0),
+            "tokens_remaining": remaining,
+            "tier_targets": tier_targets,
+            "urgent": level == "critical",
+        }
 
     def get_summary(self) -> dict:
         """Get context window summary for debugging."""
+        coherence_valid, coherence_score = self.validate_coherence()
         return {
             "max_tokens": self.max_tokens,
             "usable_tokens": self.usable_tokens,
@@ -273,8 +472,11 @@ class ContextWindowManager:
             "active_messages": self.stats.active_messages_count,
             "pruned_messages": self.stats.messages_count - self.stats.active_messages_count,
             "tokens_remaining": self.tokens_remaining(),
+            "usage_percent": self.stats.usage_percent,
             "pruning_events": self._total_pruning_events,
             "needs_pruning": self.needs_pruning(),
+            "coherence_valid": coherence_valid,
+            "coherence_score": coherence_score,
         }
 
     def mark_below_threshold(self, threshold: int = 512) -> list[ContextMessage]:
@@ -307,3 +509,41 @@ class ContextWindowManager:
         self.messages.clear()
         self._total_pruning_events = 0
         self._update_stats()
+
+    def auto_score_and_add(
+        self,
+        role: str,
+        content: str,
+        is_grounding: bool = False,
+        priority_tier: int = 2,
+    ) -> ContextMessage:
+        """Add a message with automatic importance scoring.
+
+        Uses ImportanceScorer to analyze content and assign importance
+        before adding to context window.
+
+        Args:
+            role: Message role ("user", "assistant", "system", "tool")
+            content: Message text content
+            is_grounding: True for user preferences, active projects
+            priority_tier: 0-3, lower = more protected from pruning
+
+        Returns:
+            Created ContextMessage with auto-calculated importance
+        """
+        importance, dims = ImportanceScorer.score(content, role)
+        msg = ContextMessage(
+            id=f"msg_{len(self.messages)}_{datetime.now(timezone.utc).timestamp()}",
+            role=role,
+            content=content,
+            timestamp=datetime.now(timezone.utc),
+            importance=importance,
+            importance_dims=dims,
+            tokens=self._estimate_tokens(content),
+            is_grounding=is_grounding,
+            priority_tier=priority_tier,
+        )
+        self.messages.append(msg)
+        self._update_stats()
+        self._prune_if_needed()
+        return msg
