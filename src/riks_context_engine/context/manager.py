@@ -41,8 +41,8 @@ class ImportanceScorer:
     ]
 
     USER_MENTION_PATTERNS = [
-        re.compile(r"\b(my|I|me|me)\b"),  # First person - user referring to self
-        re.compile(r"\bprefer|preference|hate|like|want|need|don't)\b", re.I),
+        re.compile(r"\b(prefer|preference|hate|like|want|need|don.t)\b", re.I),
+        re.compile(r"\b(prefer|preference|hate|like|want|need|don.t)\b", re.I),
         re.compile(r"\b(never|always|every time|never again)\b", re.I),
         re.compile(r"\b(user|account|profile|settings|preferences)\b", re.I),
     ]
