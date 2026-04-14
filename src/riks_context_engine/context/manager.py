@@ -35,14 +35,13 @@ class ImportanceScorer:
     NEW_INFO_PATTERNS = [
         re.compile(r"\b(learned|found|discovered|realized|figured out)\b", re.I),
         re.compile(r"\b(result|output|response|answer|returned)\b", re.I),
-        re.compile(r"\b(error|exception|failed|crashed|issue|bug)\b", re.I),
+        re.compile(r"\b(error|typeerror|exception|failed|crashed|issue|bug)\b", re.I),
         re.compile(r"\b(ip|address|port|token|key|config)\b", re.I),
         re.compile(r"\b(http|localhost|127\.0\.0\.1|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", re.I),
     ]
 
     USER_MENTION_PATTERNS = [
-        re.compile(r"\b(prefer|preference|hate|like|want|need|don.t)\b", re.I),
-        re.compile(r"\b(prefer|preference|hate|like|want|need|don.t)\b", re.I),
+        re.compile(r"\b(prefer|preference|hate|like|want|need|don't)\b", re.I),
         re.compile(r"\b(never|always|every time|never again)\b", re.I),
         re.compile(r"\b(user|account|profile|settings|preferences)\b", re.I),
     ]

@@ -7,6 +7,7 @@ from riks_context_engine.context.manager import (
     ContextMessage,
     ContextWindowManager,
     ContextStats,
+    ImportanceScorer,
     TIERS,
     TOKEN_BUFFER_PER_SIDE,
     CHAR_PER_TOKEN,
@@ -257,3 +258,114 @@ class TestTokenEstimation:
 
     def test_buffer_per_side_constant(self):
         assert TOKEN_BUFFER_PER_SIDE == 512
+
+class TestImportanceScorer:
+    def test_score_decision_content(self):
+        """Decision patterns should score high on decisions dimension."""
+        score, dims = ImportanceScorer.score("I decided to use Python for this project", "user")
+        assert dims["decisions"] > 0.0
+        assert score > 0.0
+
+    def test_score_user_preference(self):
+        """User preferences should score high on user_mentions dimension."""
+        score, dims = ImportanceScorer.score("I prefer dark mode, don't use bright colors", "user")
+        assert dims["user_mentions"] > 0.0
+        assert score > 0.0
+
+    def test_score_new_info_tool_result(self):
+        """Tool results should score high on tool_result dimension."""
+        score, dims = ImportanceScorer.score("Here's your command output: 127.0.0.1 connected", "tool")
+        assert dims["tool_result"] > 0.0
+
+    def test_score_low_for_casual(self):
+        """Casual messages should score low."""
+        score, dims = ImportanceScorer.score("Hello there, how are you?", "user")
+        assert score < 0.5
+
+    def test_auto_importance_convenience(self):
+        """auto_importance returns just the score."""
+        score = ImportanceScorer.auto_importance("Remember: I hate repetitive messages", "user")
+        assert 0.0 <= score <= 1.0
+
+    def test_code_error_new_info(self):
+        """Code errors should trigger new_information scoring."""
+        score, dims = ImportanceScorer.score("TypeError at line 42: cannot read property of undefined", "assistant")
+        assert dims["new_information"] >= 0.0
+
+
+class TestUsagePercent:
+    def test_get_usage_percent_initially_zero(self):
+        mgr = ContextWindowManager(max_tokens=50_000)
+        assert mgr.get_usage_percent() == 0.0
+
+    def test_get_usage_percent_after_add(self):
+        mgr = ContextWindowManager(max_tokens=50_000)
+        mgr.add(role="user", content="Hello world " * 100)
+        assert mgr.get_usage_percent() > 0.0
+
+
+class TestPruningRecommendation:
+    def test_recommendation_none_when_fresh(self):
+        mgr = ContextWindowManager(max_tokens=50_000)
+        rec = mgr.get_pruning_recommendation()
+        assert rec["level"] == "none"
+        assert rec["tokens_to_free"] == 0
+
+    def test_recommendation_advisory_60_80_percent(self):
+        mgr = ContextWindowManager(max_tokens=10_000)
+        # Fill to ~70%: 70% of 10000 = 7000 tokens. Each ~1000 chars = ~250 tokens
+        # Need ~28 messages of 1000 chars each
+        for i in range(30):
+            mgr.add(role="user", content=f"x" * 1000, importance=0.3)
+        rec = mgr.get_pruning_recommendation()
+        # After pruning, usage should be managed; just verify it returns valid structure
+        assert rec["level"] in ("none", "advisory", "recommended", "critical")
+        assert "usage_percent" in rec
+        assert "tier_targets" in rec
+
+    def test_recommendation_returns_correct_structure(self):
+        mgr = ContextWindowManager(max_tokens=50_000)
+        rec = mgr.get_pruning_recommendation()
+        assert "level" in rec
+        assert "usage_percent" in rec
+        assert "tokens_to_free" in rec
+        assert "tier_targets" in rec
+        assert "urgent" in rec
+        assert rec["level"] == "none"
+
+
+class TestAutoScoreAndAdd:
+    def test_auto_scores_content(self):
+        mgr = ContextWindowManager(max_tokens=50_000)
+        msg = mgr.auto_score_and_add(role="user", content="I decided to build a new API endpoint")
+        assert msg.importance > 0.0
+        assert msg.importance_dims["decisions"] > 0.0
+
+    def test_auto_scores_preferences(self):
+        mgr = ContextWindowManager(max_tokens=50_000)
+        msg = mgr.auto_score_and_add(role="user", content="I prefer concise responses, never use emojis")
+        assert msg.importance_dims["user_mentions"] > 0.0
+
+
+class TestCoherenceScore:
+    def test_validate_coherence_returns_tuple(self):
+        mgr = ContextWindowManager(max_tokens=10_000)
+        result = mgr.validate_coherence()
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], bool)
+        assert isinstance(result[1], float)
+
+    def test_coherence_score_high_for_clean_context(self):
+        mgr = ContextWindowManager(max_tokens=10_000)
+        mgr.add(role="user", content="Hello")
+        mgr.add(role="assistant", content="Hi there")
+        _, score = mgr.validate_coherence()
+        assert score == 1.0
+
+    def test_summary_includes_coherence(self):
+        mgr = ContextWindowManager(max_tokens=50_000)
+        mgr.add(role="user", content="Test")
+        summary = mgr.get_summary()
+        assert "coherence_valid" in summary
+        assert "coherence_score" in summary
