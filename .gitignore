@@ -1,0 +1,44 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+*.cover
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Data files (keep structure, ignore content)
+data/
+*.db
+*.sqlite
+
+# Environment
+.env
+.env.local
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/

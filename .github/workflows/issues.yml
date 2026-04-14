@@ -1,0 +1,15 @@
+name: Issues
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  triage:
+    name: Issue Triage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label check
+        run: |
+          echo "Issue opened: ${{ github.event.issue.title }}"
+          echo "Labels: ${{ github.event.issue.labels.*.name }}"
