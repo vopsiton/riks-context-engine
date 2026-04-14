@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
 
 
 @dataclass
@@ -27,7 +26,9 @@ class EpisodicMemory:
     def __init__(self, storage_path: str | None = None):
         self.storage_path = storage_path or "data/episodic.json"
 
-    def add(self, content: str, importance: float = 0.5, tags: list[str] | None = None) -> EpisodicEntry:
+    def add(
+        self, content: str, importance: float = 0.5, tags: list[str] | None = None
+    ) -> EpisodicEntry:
         """Add an episodic memory entry."""
         entry = EpisodicEntry(
             id=f"ep_{datetime.now(timezone.utc).timestamp()}",

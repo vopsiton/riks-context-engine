@@ -1,6 +1,6 @@
 """Context window manager - intelligent pruning and coherence."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 

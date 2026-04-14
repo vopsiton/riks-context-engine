@@ -1,8 +1,6 @@
 """Tests for context module."""
 
-import pytest
-
-from riks_context_engine.context.manager import ContextMessage, ContextWindowManager, ContextStats
+from riks_context_engine.context.manager import ContextWindowManager
 
 
 class TestContextWindowManager:
@@ -26,7 +24,9 @@ class TestContextWindowManager:
 
     def test_grounding_message_flag(self):
         mgr = ContextWindowManager(max_tokens=10_000)
-        msg = mgr.add(role="system", content="User prefers short replies", importance=0.9, is_grounding=True)
+        msg = mgr.add(
+            role="system", content="User prefers short replies", importance=0.9, is_grounding=True
+        )
         assert msg.is_grounding is True
 
     def test_validate_coherence(self):
