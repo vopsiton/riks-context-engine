@@ -3,7 +3,6 @@
 import tempfile
 
 import pytest
-
 from riks_context_engine.memory import (
     EpisodicMemory,
     MemoryEntry,
