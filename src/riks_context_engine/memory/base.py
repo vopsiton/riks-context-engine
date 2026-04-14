@@ -53,6 +53,10 @@ class MemoryEntry:
     last_accessed: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        self.importance = max(0.0, min(1.0, float(self.importance)))
+        self.access_count = max(0, int(self.access_count))
+
     def record_access(self) -> None:
         """Increment access counter and update last_accessed."""
         self.access_count += 1
@@ -68,9 +72,7 @@ class MemoryEntry:
             "importance": self.importance,
             "embedding": self.embedding,
             "access_count": self.access_count,
-            "last_accessed": (
-                self.last_accessed.isoformat() if self.last_accessed else None
-            ),
+            "last_accessed": (self.last_accessed.isoformat() if self.last_accessed else None),
             "metadata": self.metadata,
         }
 

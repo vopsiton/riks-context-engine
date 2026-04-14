@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -25,6 +26,10 @@ class Procedure:
     success_rate: float = 1.0  # 0.0 – 1.0
     tags: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.success_rate = max(0.0, min(1.0, float(self.success_rate)))
+        self.use_count = max(0, int(self.use_count))
 
     def record_use(self, success: bool) -> None:
         """Update usage statistics after a run."""
@@ -65,9 +70,11 @@ class Procedure:
             use_count=meta.get("use_count", 0),
             success_rate=meta.get("success_rate", 1.0),
             tags=meta.get("tags", []),
-            metadata={k: v for k, v in meta.items() if k not in (
-                "name", "steps", "use_count", "success_rate", "tags"
-            )},
+            metadata={
+                k: v
+                for k, v in meta.items()
+                if k not in ("name", "steps", "use_count", "success_rate", "tags")
+            },
         )
 
     def to_dict(self) -> dict:
@@ -122,9 +129,7 @@ class ProceduralMemory:
             try:
                 with open(path, encoding="utf-8") as fh:
                     data = json.load(fh)
-                self._procedures = {
-                    d["id"]: Procedure.from_dict(d) for d in data
-                }
+                self._procedures = {d["id"]: Procedure.from_dict(d) for d in data}
             except (json.JSONDecodeError, KeyError, ValueError):
                 self._procedures = {}
 
@@ -132,8 +137,12 @@ class ProceduralMemory:
         path = Path(self.storage_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = [p.to_dict() for p in self._procedures.values()]
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2, ensure_ascii=False)
+        json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, json_bytes)
+        finally:
+            os.close(fd)
 
     def _generate_id(self) -> str:
         return f"pr_{uuid.uuid4().hex}"
@@ -242,9 +251,7 @@ class ProceduralMemory:
         self._save()
         return True
 
-    def update(
-        self, proc_id: str, **fields: object
-    ) -> Procedure | None:
+    def update(self, proc_id: str, **fields: object) -> Procedure | None:
         """Update mutable fields on an existing procedure."""
         proc = self._procedures.get(proc_id)
         if proc is None:

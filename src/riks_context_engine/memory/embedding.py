@@ -34,9 +34,7 @@ class OllamaEmbedder:
         model: str = "nomic-embed-text",
         timeout: float = 30.0,
     ):
-        self.base_url = base_url or os.environ.get(
-            "OLLAMA_BASE_URL", "http://localhost:11434"
-        )
+        self.base_url = base_url or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         self.model = model
         self.timeout = timeout
         self._client: httpx.Client | None = None

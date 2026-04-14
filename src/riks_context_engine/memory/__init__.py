@@ -5,6 +5,7 @@ from .embedding import OllamaEmbedder, OllamaEmbeddingError, get_embedder, set_e
 from .episodic import EpisodicEntry, EpisodicMemory
 from .procedural import ProceduralMemory, Procedure
 from .semantic import SemanticEntry, SemanticMemory
+from .tier_manager import TierConfig, TierManager
 
 __all__ = [
     # Base
@@ -24,4 +25,7 @@ __all__ = [
     # Procedural
     "Procedure",
     "ProceduralMemory",
+    # TierManager
+    "TierConfig",
+    "TierManager",
 ]

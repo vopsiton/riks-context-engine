@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -23,6 +24,10 @@ class EpisodicEntry:
     tags: list[str] | None = None
     access_count: int = 0
     last_accessed: datetime | None = None
+
+    def __post_init__(self) -> None:
+        self.importance = max(0.0, min(1.0, float(self.importance)))
+        self.access_count = max(0, int(self.access_count))
 
     def record_access(self) -> None:
         self.access_count += 1
@@ -63,9 +68,7 @@ class EpisodicEntry:
             "embedding": self.embedding,
             "tags": self.tags,
             "access_count": self.access_count,
-            "last_accessed": (
-                self.last_accessed.isoformat() if self.last_accessed else None
-            ),
+            "last_accessed": (self.last_accessed.isoformat() if self.last_accessed else None),
         }
 
     @classmethod
@@ -112,9 +115,7 @@ class EpisodicMemory:
             try:
                 with open(path, encoding="utf-8") as fh:
                     data = json.load(fh)
-                self._entries = {
-                    d["id"]: EpisodicEntry.from_dict(d) for d in data
-                }
+                self._entries = {d["id"]: EpisodicEntry.from_dict(d) for d in data}
             except (json.JSONDecodeError, KeyError, ValueError):
                 # Corrupt file – start fresh
                 self._entries = {}
@@ -124,8 +125,12 @@ class EpisodicMemory:
         path = Path(self.storage_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = [entry.to_dict() for entry in self._entries.values()]
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2, ensure_ascii=False)
+        json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, json_bytes)
+        finally:
+            os.close(fd)
 
     def _generate_id(self) -> str:
         return f"ep_{uuid.uuid4().hex}"
@@ -241,9 +246,7 @@ class EpisodicMemory:
             return 0
 
         # Sort by (importance asc, timestamp asc) – drop lowest importance first
-        sorted_entries = sorted(
-            self._entries.values(), key=lambda e: (e.importance, e.timestamp)
-        )
+        sorted_entries = sorted(self._entries.values(), key=lambda e: (e.importance, e.timestamp))
         to_remove = len(self._entries) - max_entries
         removed = 0
         for entry in sorted_entries:

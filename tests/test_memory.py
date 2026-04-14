@@ -18,6 +18,7 @@ from riks_context_engine.memory import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def new_temp_path() -> str:
     return tempfile.mktemp(suffix=".json")
 
@@ -29,6 +30,7 @@ def new_temp_db() -> str:
 # ---------------------------------------------------------------------------
 # MemoryEntry / MemoryType (base)
 # ---------------------------------------------------------------------------
+
 
 class TestMemoryType:
     def test_memory_type_values(self):
@@ -70,6 +72,7 @@ class TestMemoryEntry:
 # ---------------------------------------------------------------------------
 # EpisodicMemory
 # ---------------------------------------------------------------------------
+
 
 class TestEpisodicMemory:
     def test_add_entry(self):
@@ -175,6 +178,7 @@ class TestEpisodicMemory:
 # SemanticMemory
 # ---------------------------------------------------------------------------
 
+
 class TestSemanticMemory:
     def test_add_entry(self):
         mem = SemanticMemory(db_path=new_temp_db())
@@ -253,6 +257,7 @@ class TestSemanticMemory:
 # ---------------------------------------------------------------------------
 # ProceduralMemory
 # ---------------------------------------------------------------------------
+
 
 class TestProceduralMemory:
     def test_store_procedure(self):
@@ -359,6 +364,7 @@ class TestProceduralMemory:
 # OllamaEmbedder (unit with mocked httpx)
 # ---------------------------------------------------------------------------
 
+
 class TestOllamaEmbedder:
     def test_embed_bad_host_raises(self):
         embedder = OllamaEmbedder(base_url="http://localhost:19999")
@@ -378,6 +384,7 @@ class TestOllamaEmbedder:
 # ---------------------------------------------------------------------------
 # Cross-tier integration (basic)
 # ---------------------------------------------------------------------------
+
 
 class TestCrossTier:
     def test_all_memory_entries_have_required_fields(self):

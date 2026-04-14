@@ -31,6 +31,10 @@ class SemanticEntry:
     access_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        self.confidence = max(0.0, min(1.0, float(self.confidence)))
+        self.access_count = max(0, int(self.access_count))
+
     def record_access(self) -> None:
         self.access_count += 1
         self.last_accessed = datetime.now(timezone.utc)
@@ -229,9 +233,7 @@ class SemanticMemory:
         with self._conn() as conn:
             import json
 
-            embedding_bytes = (
-                json.dumps(entry.embedding).encode() if entry.embedding else None
-            )
+            embedding_bytes = json.dumps(entry.embedding).encode() if entry.embedding else None
             conn.execute(
                 """
                 INSERT OR REPLACE INTO semantic_entries
@@ -349,9 +351,7 @@ class SemanticMemory:
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:limit]
 
-    def update(
-        self, entry_id: str, **fields: Any
-    ) -> SemanticEntry | None:
+    def update(self, entry_id: str, **fields: Any) -> SemanticEntry | None:
         """Update mutable fields on an existing entry."""
         entry = self.get(entry_id)
         if entry is None:
@@ -364,20 +364,16 @@ class SemanticMemory:
 
     def delete(self, entry_id: str) -> bool:
         with self._conn() as conn:
-            cur = conn.execute(
-                "DELETE FROM semantic_entries WHERE id = ?", (entry_id,)
-            )
+            cur = conn.execute("DELETE FROM semantic_entries WHERE id = ?", (entry_id,))
             conn.commit()
             return cur.rowcount > 0
 
     def stats(self) -> dict:
         with self._conn() as conn:
-            total = conn.execute(
-                "SELECT COUNT(*) FROM semantic_entries"
-            ).fetchone()[0]
-            avg_conf = conn.execute(
-                "SELECT AVG(confidence) FROM semantic_entries"
-            ).fetchone()[0] or 0.0
+            total = conn.execute("SELECT COUNT(*) FROM semantic_entries").fetchone()[0]
+            avg_conf = (
+                conn.execute("SELECT AVG(confidence) FROM semantic_entries").fetchone()[0] or 0.0
+            )
             with_emb = conn.execute(
                 "SELECT COUNT(*) FROM semantic_entries WHERE embedding IS NOT NULL"
             ).fetchone()[0]
