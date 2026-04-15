@@ -1,6 +1,6 @@
 # Rik's Context Engine 🗿
 
-**Status:** Just started | **Owner:** @vopsiton (for @riks-ai)
+**Status:** In development | **Owner:** @vopsiton (for @riks-ai)
 
 AI context and memory management framework - because context windows have limits, but problems don't.
 
@@ -29,30 +29,85 @@ riks-context-engine/
 └── cli/              # Terminal interface
 ```
 
-## Sprint Roadmap
+## Quick Start
 
-### Sprint 1 - Foundation
-- [Issue #6] Project Bootstrap (README, CI, structure)
-- [Issue #1] Memory Hierarchy (3-tier architecture)
-- [Issue #2] Context Window Manager (intelligent pruning)
+### Local Development (Python)
 
-### Sprint 2 - Core Intelligence
-- [Issue #3] Task Decomposition (goal → steps)
-- [Issue #4] Self-Reflection (learn from mistakes)
+```bash
+# Clone
+git clone https://github.com/vopsiton/riks-context-engine.git
+cd riks-context-engine
 
-### Sprint 3 - Advanced
-- [Issue #5] Knowledge Graph (entities & relationships)
+# Virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# .\.venv\Scripts\activate  # Windows
+
+# Install
+pip install -e ".[dev]"
+
+# Run CLI
+riks --help
+
+# Or import directly
+python -c "from riks_context_engine import *; print('OK')"
+```
+
+### Docker (Local Sandbox)
+
+```bash
+# Build
+docker build -t riks-context-engine:dev .
+
+# Run with docker-compose
+docker-compose up dev
+
+# Test inside container
+docker-compose exec dev python -c "from riks_context_engine import *; print('OK')"
+```
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+cp .env.example .env
+# Edit .env with your settings
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server endpoint |
+| `OLLAMA_MODEL` | `gemma4-31b-q4` | Default LLM model |
+| `CHROMA_HOST` | `localhost` | ChromaDB host |
+| `DATA_DIR` | `/app/data` | Data storage directory |
 
 ## Stack
 
 - **Language:** Python (fast iteration, rich ML ecosystem)
-- **Vector DB:** Qdrant (for semantic search) or in-process with Chroma
+- **Vector DB:** ChromaDB (embedded, no external DB needed)
 - **LLM Integration:** Ollama (local) + OpenAI/Anthropic (cloud)
 - **Storage:** SQLite (semantic), JSON files (episodic)
 
-## Why 2026?
+## Development
 
-Context engineering is the next frontier. While everyone chases AGI, we build memory.
+```bash
+# Run tests
+pytest
+
+# Lint
+ruff check src/
+
+# Type check
+mypy src/
+
+# Pre-commit hooks
+pre-commit run --all-files
+```
+
+## Deployment
+
+See [Deployment Guide](./docs/DEPLOYMENT.md) for CI/CD setup and production deployment.
 
 ## License
 

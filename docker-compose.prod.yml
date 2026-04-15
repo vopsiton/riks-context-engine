@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+  # ===== Production Environment ===== #
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/vopsiton/riks-context-engine:latest
+    container_name: riks-context-engine-prod
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATA_DIR=/app/data
+      - OLLAMA_HOST=${OLLAMA_HOST}
+      - CHROMA_HOST=${CHROMA_HOST:-chroma}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - prod-data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - riks-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.insert(0,'src'); from riks_context_engine import *; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  riks-net:
+    driver: bridge
+
+volumes:
+  prod-data:

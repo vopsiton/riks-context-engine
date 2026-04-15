@@ -1,0 +1,53 @@
+version: '3.9'
+
+services:
+  # ===== Local Development Sandbox ===== #
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: riks-context-engine:dev
+    container_name: riks-context-engine-dev
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATA_DIR=/app/data
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - CHROMA_HOST=localhost
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+    ports:
+      - "8000:8000"
+    networks:
+      - riks-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.insert(0,'src'); from riks_context_engine import *; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===== Production ===== #
+  prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: riks-context-engine:latest
+    container_name: riks-context-engine-prod
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATA_DIR=/app/data
+      - OLLAMA_HOST=${OLLAMA_HOST}
+      - CHROMA_HOST=${CHROMA_HOST:-chroma}
+    volumes:
+      - prod-data:/app/data
+    restart: unless-stopped
+    networks:
+      - riks-net
+
+networks:
+  riks-net:
+    driver: bridge
+
+volumes:
+  prod-data:
