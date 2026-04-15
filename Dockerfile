@@ -12,13 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy app source (needed for editable install)
+COPY src/ ./src/
+COPY tests/ ./tests/
+
 # Copy and install
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir -e ".[dev]"
-
-# ===== App ===== #
-COPY src/ ./src/
-COPY tests/ ./tests/
 
 # ===== Data directory ===== #
 RUN mkdir -p /app/data && chmod 755 /app/data
