@@ -43,6 +43,23 @@ riks-context-engine/
 ### Sprint 3 - Advanced
 - [Issue #5] Knowledge Graph (entities & relationships)
 
+## Quick Start with Docker
+
+```bash
+# Clone the repo
+git clone https://github.com/vopsiton/riks-context-engine.git
+cd riks-context-engine
+
+# Copy environment config
+cp .env.example .env
+
+# Build and run
+docker-compose up --build
+
+# Inside container
+python -m riks_context_engine.cli.main --help
+```
+
 ## Stack
 
 - **Language:** Python (fast iteration, rich ML ecosystem)

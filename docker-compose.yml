@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: riks-sandbox
+    environment:
+      - ENVIRONMENT=development
+      - DATA_DIR=/app/data
+      - CHROMA_HOST=localhost
+      - CHROMA_PORT=8000
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+    ports:
+      - "8000:8000"
+    networks:
+      - riks-dev
+
+networks:
+  riks-dev:
+    driver: bridge
