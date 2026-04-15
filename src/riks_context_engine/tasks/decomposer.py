@@ -1,7 +1,7 @@
 """Task decomposition - goal → executable steps."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 import re
@@ -32,13 +32,13 @@ class Task:
     parallel_group: Optional[str] = None  # Tasks in same group can run in parallel
     success_criteria: Optional[str] = None
     rollback_steps: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     retry_count: int = 0
 
     def mark_done(self):
         self.status = TaskStatus.DONE
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
 
     def mark_failed(self):
         self.status = TaskStatus.FAILED
@@ -57,7 +57,7 @@ class TaskGraph:
 
     goal: str
     tasks: list[Task] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def get_task(self, task_id: str) -> Optional[Task]:
         """Get task by ID."""
