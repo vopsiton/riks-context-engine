@@ -100,3 +100,58 @@ class TestKnowledgeGraph:
         kg.relate(e1, e2, RelationshipType.WORKS_WITH)
         rels = kg.get_relationships(e1.id)
         assert len(rels) == 1
+
+
+class TestSemanticSearch:
+    def test_semantic_search_returns_scored_entities(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        kg = KnowledgeGraph(db_path)
+        kg.add_entity("Vahit", EntityType.PERSON, {"role": "DevSecOps Lead"})
+        kg.add_entity("Rik", EntityType.CONCEPT, {"domain": "AI assistant"})
+        kg.add_entity("Kubernetes", EntityType.CONCEPT, {"domain": "container orchestration"})
+
+        results = kg.semantic_search("AI and assistants", top_k=2, embedder=FakeEmbedder())
+        assert len(results) <= 2
+        assert all(0.0 <= score <= 1.0 for _, score in results)
+
+    def test_semantic_search_falls_back_on_unavailable_embedder(self):
+        kg = KnowledgeGraph()
+        kg.add_entity("Vahit", EntityType.PERSON)
+        kg.add_entity("Vahid", EntityType.PERSON)
+        results = kg.semantic_search("Vahit", top_k=5, embedder=FailingEmbedder())
+        assert len(results) >= 1
+        assert results[0][0].name == "Vahit"
+
+    def test_keyword_search_score(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        kg = KnowledgeGraph(db_path)
+        kg.add_entity("Vahit", EntityType.PERSON, {"role": "DevSecOps"})
+        kg.add_entity("Riz", EntityType.CONCEPT, {"domain": "fun AI"})
+        results = kg.semantic_search("DevSecOps", top_k=5, embedder=FailingEmbedder())
+        assert len(results) >= 1
+        assert results[0][0].name == "Vahit"
+
+
+class FakeEmbedder:
+    """Fake embedder that returns predictable vectors for testing."""
+
+    def embed(self, text: str):
+        # Return a 3-element vector based on text content
+        vec = [hash(text) % 100 / 100.0, len(text) / 20.0, ord(text[0]) / 127.0]
+        return FakeEmbeddingResult(vec)
+
+
+class FakeEmbeddingResult:
+    def __init__(self, embedding):
+        self.embedding = embedding
+
+
+class FailingEmbedder:
+    """Embedder that always raises to test fallback path."""
+
+    def embed(self, text: str):
+        raise RuntimeError("Embedder unavailable")

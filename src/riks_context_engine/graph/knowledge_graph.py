@@ -1,12 +1,32 @@
-"""Knowledge graph - entities and their relationships."""
+"""Knowledge graph - entities and their relationships with semantic search."""
 
 import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from math import sqrt
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
+
+
+from riks_context_engine.memory.embedding import OllamaEmbedder, get_embedder
+
+
+class EmbedderProtocol(Protocol):
+    """Protocol for embedding services."""
+
+    def embed(self, text: str) -> Any: ...
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sqrt(sum(x * x for x in a))
+    norm_b = sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 class EntityType(Enum):
@@ -288,6 +308,7 @@ class KnowledgeGraph:
     def find_path(self, from_entity_id: str, to_entity_id: str, max_depth: int = 3) -> list[Relationship] | None:
         """Find a path between two entities using BFS.
 
+
         Args:
             from_entity_id: Start entity ID
             to_entity_id: Target entity ID
@@ -324,3 +345,85 @@ class KnowledgeGraph:
                     queue.append((rel.from_entity_id, new_path))
 
         return None
+
+    # ── Semantic Search ────────────────────────────────────────────────────
+
+    def semantic_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        embedder: EmbedderProtocol | None = None,
+        score_threshold: float = 0.0,
+    ) -> list[tuple[Entity, float]]:
+        """Find entities most similar to a natural language query.
+
+        Args:
+            query: Natural language search phrase
+            top_k: Maximum number of results to return
+            embedder: Embedding service (defaults to OllamaEmbedder)
+            score_threshold: Minimum cosine similarity score (0.0–1.0)
+
+        Returns:
+            List of (entity, similarity_score) tuples, sorted descending
+        """
+        if not self._entities:
+            return []
+
+
+        emb_service = embedder or get_embedder()
+
+        try:
+            query_emb = emb_service.embed(query)
+            if hasattr(query_emb, "embedding"):
+                query_vec = query_emb.embedding
+            else:
+                query_vec = query_emb  # fallback for raw list responses
+        except Exception:
+            # If embedding service unavailable, fall back to keyword match
+            return self._keyword_search(query, top_k)
+
+        scored: list[tuple[Entity, float]] = []
+        for entity in self._entities.values():
+            entity_vec = self._get_entity_embedding(entity)
+            if entity_vec is not None:
+                score = _cosine_similarity(query_vec, entity_vec)
+                if score >= score_threshold:
+                    scored.append((entity, score))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored[:top_k]
+
+    def _get_entity_embedding(self, entity: Entity) -> list[float] | None:
+        """Get cached embedding vector for an entity, computing if needed."""
+        cache_key = f"_emb_{entity.id}"
+        if hasattr(self, cache_key):
+            return getattr(self, cache_key)
+
+        # Build descriptive text from entity properties
+        parts = [entity.name]
+        parts.append(entity.entity_type.value)
+        parts.extend(f"{k}={v}" for k, v in entity.properties.items())
+        text = ", ".join(parts)
+
+        try:
+            result = get_embedder().embed(text)
+            vec = result.embedding if hasattr(result, "embedding") else result
+            setattr(self, cache_key, vec)
+            return vec
+        except Exception:
+            return None
+
+    def _keyword_search(self, query: str, top_k: int) -> list[tuple[Entity, float]]:
+        """Fuzzy fallback when semantic search is unavailable."""
+        q = query.lower()
+        results: list[tuple[Entity, float]] = []
+        for entity in self._entities.values():
+            score = 0.0
+            if q in entity.name.lower():
+                score = 1.0
+            elif any(q in str(v).lower() for v in entity.properties.values()):
+                score = 0.5
+            if score > 0:
+                results.append((entity, score))
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results[:top_k]
