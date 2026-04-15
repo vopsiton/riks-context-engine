@@ -32,7 +32,7 @@ class Task:
     parallel_group: Optional[str] = None  # Tasks in same group can run in parallel
     success_criteria: Optional[str] = None
     rollback_steps: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     retry_count: int = 0
 
@@ -42,7 +42,6 @@ class Task:
 
     def mark_failed(self):
         self.status = TaskStatus.FAILED
-        self.completed_at = datetime.now(timezone.utc)
 
     def mark_running(self):
         self.status = TaskStatus.RUNNING
@@ -58,7 +57,7 @@ class TaskGraph:
 
     goal: str
     tasks: list[Task] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=datetime.now(timezone.utc))
 
     def get_task(self, task_id: str) -> Optional[Task]:
         """Get task by ID."""
