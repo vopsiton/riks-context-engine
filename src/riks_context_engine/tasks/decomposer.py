@@ -98,7 +98,7 @@ DECOMPOSE_PATTERNS = [
 
 def infer_dependencies(tasks: list[Task]) -> list[Task]:
     """Infer task dependencies based on type and order."""
-    type_order = {
+    _type_order: dict[str, int] = {
         "Setup and Configuration": 0,
         "Build and Creation": 1,
         "Testing and Verification": 2,

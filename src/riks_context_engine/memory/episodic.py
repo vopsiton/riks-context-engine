@@ -36,6 +36,8 @@ class EpisodicMemory:
 
     def _load(self) -> None:
         """Load entries from JSON file."""
+        if self.storage_path == ":memory:":
+            return
         try:
             with open(self.storage_path) as f:
                 data = json.load(f)

@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     gcc \
     libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -27,9 +28,14 @@ RUN mkdir -p /app/data
 ENV PYTHONPATH=/app
 ENV DATA_DIR=/app/data
 ENV ENVIRONMENT=development
+ENV OLLAMA_BASE_URL=http://host.docker.internal:11434
 
 # Expose default port
 EXPOSE 8000
 
-# Quick start entrypoint
-CMD ["python", "-m", "riks_context_engine.cli.main", "--help"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Start uvicorn FastAPI server
+CMD ["uvicorn", "riks_context_engine.api.server:app", "--host", "0.0.0.0", "--port", "8000"]

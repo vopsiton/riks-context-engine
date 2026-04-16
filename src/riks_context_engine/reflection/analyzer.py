@@ -121,7 +121,7 @@ class ReflectionAnalyzer:
         # Simple pattern-based analysis
         for msg in conversation:
             content = msg.get("content", "")
-            role = msg.get("role", "")
+            _role = msg.get("role", "")
 
             # Look for success indicators
             if any(
@@ -249,7 +249,7 @@ class ReflectionAnalyzer:
 
     def get_active_lessons(self) -> list[Lesson]:
         """Get all unresolved lessons."""
-        return [l for l in self._lessons.values() if not l.resolved]
+        return [item for item in self._lessons.values() if not item.resolved]
 
     def resolve_lesson(self, lesson_id: str) -> bool:
         """Mark a lesson as resolved."""

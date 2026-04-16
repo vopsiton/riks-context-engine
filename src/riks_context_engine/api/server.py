@@ -15,6 +15,7 @@ from riks_context_engine.graph.knowledge_graph import (
     RelationshipType,
 )
 from riks_context_engine.memory.episodic import EpisodicMemory
+from riks_context_engine.memory.embedding import OllamaEmbedder
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
 from riks_context_engine.reflection.analyzer import ReflectionAnalyzer
@@ -93,6 +94,18 @@ class GoalDecomposeRequest(BaseModel):
 class ReflectionAnalyzeRequest(BaseModel):
     interaction_id: str
     conversation: list[dict]
+
+
+class ChatRequest(BaseModel):
+    message: str
+    model: Optional[str] = "qwen3.5-9b"
+    system_prompt: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    response: str
+    model: str
+    tokens: int
 
 
 # ─── Engine wrapper (holds all subsystems) ─────────────────────────────────────
@@ -549,6 +562,55 @@ def tasks_get(task_id: str, engine: ContextEngine = Depends(get_engine)):
 # ─── Self-Reflection ───────────────────────────────────────────────────────────
 
 
+@app.get("/api/chat/models")
+def chat_models():
+    """List available models from Ollama."""
+    try:
+        import ollama
+        models = ollama.list()
+        return [{"name": m["name"], "model": m["model"]} for m in models["models"]]
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Cannot reach Ollama: {e}")
+
+
+@app.post("/api/chat/embed")
+def chat_embed(body: ChatRequest) -> ChatResponse:
+    """Generate embedding for a message using Ollama + nomic-embed-text."""
+    try:
+        embedder = OllamaEmbedder()
+        result = embedder.embed(body.message)
+        return ChatResponse(
+            response=str(result.embedding[:5]) + "...",
+            model=result.model,
+            tokens=result.prompt_tokens or 0,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.post("/api/chat")
+def chat(body: ChatRequest) -> ChatResponse:
+    """Chat with a model via Ollama. Optionally add to context window."""
+    model = body.model or "qwen3.5-9b"
+    messages = []
+    if body.system_prompt:
+        messages.append({"role": "system", "content": body.system_prompt})
+    messages.append({"role": "user", "content": body.message})
+
+    try:
+        import ollama
+        resp = ollama.chat(model=model, messages=messages, stream=False)
+        content = resp["message"]["content"]
+        return ChatResponse(
+            response=content,
+            model=model,
+            tokens=resp.get("prompt_eval_count", 0) + resp.get("eval_eval_count", 0),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ollama error: {e}")
+
+
 @app.post("/api/reflection/analyze")
 def reflection_analyze(body: ReflectionAnalyzeRequest, engine: ContextEngine = Depends(get_engine)):
     report = engine.reflection.analyze(
@@ -562,15 +624,15 @@ def reflection_analyze(body: ReflectionAnalyzeRequest, engine: ContextEngine = D
         "missing_info": report.missing_info,
         "lessons": [
             {
-                "id": l.id,
-                "category": l.category,
-                "observation": l.observation,
-                "lesson_text": l.lesson_text,
-                "severity": l.severity,
-                "occurrence_count": l.occurrence_count,
-                "resolved": l.resolved,
+                "id": lesson.id,
+                "category": lesson.category,
+                "observation": lesson.observation,
+                "lesson_text": lesson.lesson_text,
+                "severity": lesson.severity,
+                "occurrence_count": lesson.occurrence_count,
+                "resolved": lesson.resolved,
             }
-            for l in report.lessons
+            for lesson in report.lessons
         ],
         "timestamp": report.timestamp.isoformat(),
     }
@@ -581,15 +643,15 @@ def reflection_lessons(engine: ContextEngine = Depends(get_engine)):
     lessons = engine.reflection.get_active_lessons()
     return [
         {
-            "id": l.id,
-            "category": l.category,
-            "observation": l.observation,
-            "lesson_text": l.lesson_text,
-            "severity": l.severity,
-            "occurrence_count": l.occurrence_count,
-            "resolved": l.resolved,
+            "id": lesson.id,
+            "category": lesson.category,
+            "observation": lesson.observation,
+            "lesson_text": lesson.lesson_text,
+            "severity": lesson.severity,
+            "occurrence_count": lesson.occurrence_count,
+            "resolved": lesson.resolved,
         }
-        for l in lessons
+        for lesson in lessons
     ]
 
 

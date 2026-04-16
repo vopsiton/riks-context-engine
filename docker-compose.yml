@@ -9,17 +9,23 @@ services:
     environment:
       - ENVIRONMENT=development
       - DATA_DIR=/app/data
-      - CHROMA_HOST=localhost
-      - CHROMA_PORT=8000
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
-      - ./src:/app/src:ro
-      - ./tests:/app/tests:ro
     ports:
       - "8000:8000"
     networks:
       - riks-dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
 networks:
   riks-dev:
