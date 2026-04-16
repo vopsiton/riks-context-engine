@@ -4,7 +4,6 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
 
 class TaskStatus(Enum):
@@ -29,11 +28,11 @@ class Task:
     description: str
     status: TaskStatus = TaskStatus.PENDING
     dependencies: list[str] = field(default_factory=list)
-    parallel_group: Optional[str] = None  # Tasks in same group can run in parallel
-    success_criteria: Optional[str] = None
+    parallel_group: str | None = None  # Tasks in same group can run in parallel
+    success_criteria: str | None = None
     rollback_steps: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     retry_count: int = 0
 
     def mark_done(self):
@@ -59,7 +58,7 @@ class TaskGraph:
     tasks: list[Task] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def get_task(self, task_id: str) -> Optional[Task]:
+    def get_task(self, task_id: str) -> Task | None:
         """Get task by ID."""
         for task in self.tasks:
             if task.id == task_id:
@@ -245,7 +244,7 @@ class TaskDecomposer:
 
         return graph
 
-    def validate_graph(self, graph: TaskGraph) -> tuple[bool, Optional[str]]:
+    def validate_graph(self, graph: TaskGraph) -> tuple[bool, str | None]:
         """Validate task graph for cycles and missing dependencies."""
         # Check for cycles using DFS
         visited = set()

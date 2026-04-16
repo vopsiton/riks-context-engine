@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
 
 @dataclass
@@ -40,7 +39,7 @@ class ContextStats:
     messages_count: int
     active_messages_count: int  # Not pruned
     pruning_count: int = 0
-    last_prune_timestamp: Optional[datetime] = None
+    last_prune_timestamp: datetime | None = None
 
 
 # Token estimation constants

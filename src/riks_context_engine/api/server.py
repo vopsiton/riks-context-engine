@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -14,8 +12,8 @@ from riks_context_engine.graph.knowledge_graph import (
     KnowledgeGraph,
     RelationshipType,
 )
-from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.embedding import OllamaEmbedder
+from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
 from riks_context_engine.reflection.analyzer import ReflectionAnalyzer
@@ -49,7 +47,7 @@ class ContextStatsResponse(BaseModel):
     messages_count: int
     active_messages_count: int
     pruning_count: int
-    last_prune_timestamp: Optional[str]
+    last_prune_timestamp: str | None
     tokens_remaining: int
     needs_pruning: bool
 
@@ -57,13 +55,13 @@ class ContextStatsResponse(BaseModel):
 class EpisodicAddRequest(BaseModel):
     content: str
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
-    tags: Optional[list[str]] = None
+    tags: list[str] | None = None
 
 
 class SemanticAddRequest(BaseModel):
     subject: str
     predicate: str
-    object: Optional[str] = None
+    object: str | None = None
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
@@ -76,7 +74,7 @@ class ProcedureStoreRequest(BaseModel):
 class EntityAddRequest(BaseModel):
     name: str
     entity_type: str
-    properties: Optional[dict] = None
+    properties: dict | None = None
 
 
 class RelationCreateRequest(BaseModel):
@@ -98,8 +96,8 @@ class ReflectionAnalyzeRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    model: Optional[str] = "qwen3.5-9b"
-    system_prompt: Optional[str] = None
+    model: str | None = "qwen3.5-9b"
+    system_prompt: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -323,9 +321,9 @@ def semantic_delete(entry_id: str, engine: ContextEngine = Depends(get_engine)):
 
 @app.get("/api/memory/semantic", response_model=list[dict])
 def semantic_query(
-    subject: Optional[str] = None,
-    predicate: Optional[str] = None,
-    recall: Optional[str] = None,
+    subject: str | None = None,
+    predicate: str | None = None,
+    recall: str | None = None,
     engine: ContextEngine = Depends(get_engine),
 ):
     if recall:
@@ -491,8 +489,8 @@ def graph_entity_rels(entity_id: str, engine: ContextEngine = Depends(get_engine
 
 @app.get("/api/graph/query")
 def graph_query(
-    entity_name: Optional[str] = None,
-    relationship_type: Optional[str] = None,
+    entity_name: str | None = None,
+    relationship_type: str | None = None,
     engine: ContextEngine = Depends(get_engine),
 ):
     rel_type = RelationshipType(relationship_type) if relationship_type else None
@@ -567,8 +565,9 @@ def chat_models():
     """List available models from Ollama."""
     try:
         import ollama
-        models = ollama.list()
-        return [{"name": m["name"], "model": m["model"]} for m in models["models"]]
+
+        resp = ollama.list()
+        return [{"name": m.model, "model": m.model} for m in resp.models]
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Cannot reach Ollama: {e}")
 
@@ -588,7 +587,6 @@ def chat_embed(body: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 @app.post("/api/chat")
 def chat(body: ChatRequest) -> ChatResponse:
     """Chat with a model via Ollama. Optionally add to context window."""
@@ -600,6 +598,7 @@ def chat(body: ChatRequest) -> ChatResponse:
 
     try:
         import ollama
+
         resp = ollama.chat(model=model, messages=messages, stream=False)
         content = resp["message"]["content"]
         return ChatResponse(

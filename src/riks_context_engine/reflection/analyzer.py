@@ -3,7 +3,6 @@
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
 
 
 @dataclass
@@ -227,7 +226,7 @@ class ReflectionAnalyzer:
                 },
             )
 
-    def record_failure(self, task_id: str, error: str, root_cause: Optional[str] = None) -> None:
+    def record_failure(self, task_id: str, error: str, root_cause: str | None = None) -> None:
         """Record a failed task."""
         categories = detect_category(error)
         severity = extract_severity(error)
