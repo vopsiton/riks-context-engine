@@ -55,7 +55,7 @@ class Relationship:
     relationship_type: RelationshipType
     properties: dict = field(default_factory=dict)
     confidence: float = 1.0
-    created_at: datetime = datetime.now(timezone.utc)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class KnowledgeGraph:
@@ -75,10 +75,15 @@ class KnowledgeGraph:
         self._entities: dict[str, Entity] = {}
         self._relationships: dict[str, Relationship] = {}
         self._embedder = embedder
+        self._is_memory = self.db_path == ":memory:"
         self._init_db()
+        if not self._is_memory:
+            self.load()
 
     def _init_db(self) -> None:
         """Initialize SQLite database for persistence."""
+        if self._is_memory:
+            return
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.executescript("""
@@ -115,6 +120,8 @@ class KnowledgeGraph:
 
     def load(self) -> None:
         """Load entities and relationships from SQLite (call after init)."""
+        if self._is_memory:
+            return  # In-memory: data is already in-memory, skip DB load
         self._load_from_db()
 
     def _load_from_db(self) -> None:
@@ -216,6 +223,8 @@ class KnowledgeGraph:
 
     def _save_entity_to_db(self, entity: Entity) -> None:
         """Persist entity to SQLite."""
+        if self._is_memory:
+            return
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute(
@@ -257,6 +266,8 @@ class KnowledgeGraph:
 
     def _save_rel_to_db(self, rel: Relationship) -> None:
         """Persist relationship to SQLite."""
+        if self._is_memory:
+            return
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute(

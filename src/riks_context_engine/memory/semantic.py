@@ -35,13 +35,13 @@ class SemanticMemory:
         self._is_memory = db_path == ":memory:"
         if not self._is_memory:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        # Use shared cache for :memory: so all connections see the same DB
+        # In-memory: use dict directly, no SQLite needed
         if self._is_memory:
-            self._conn = sqlite3.connect("file::memory:?cache=shared", uri=True)
+            self._conn = None
         else:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self._conn.execute("""
-            CREATE TABLE IF NOT EXISTS semantic_entries (
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS semantic_entries (
                 id TEXT PRIMARY KEY,
                 subject TEXT NOT NULL,
                 predicate TEXT NOT NULL,
@@ -52,11 +52,13 @@ class SemanticMemory:
                 access_count INTEGER NOT NULL DEFAULT 0
             )
         """)
-        self._conn.commit()
-        self._load()
+            self._conn.commit()
+            self._load()
 
     def _load(self) -> None:
         """Load entries from SQLite into memory."""
+        if self._is_memory:
+            return
         try:
             conn = self._conn
             conn.row_factory = sqlite3.Row
@@ -100,6 +102,8 @@ class SemanticMemory:
 
     def _save_entry(self, entry: SemanticEntry) -> None:
         """Persist entry to SQLite using the shared connection."""
+        if self._is_memory:
+            return
         conn = self._conn
         conn.execute(
             """
@@ -133,8 +137,9 @@ class SemanticMemory:
         """Delete a semantic entry by ID."""
         if entry_id in self._entries:
             del self._entries[entry_id]
-            self._conn.execute("DELETE FROM semantic_entries WHERE id = ?", (entry_id,))
-            self._conn.commit()
+            if not self._is_memory:
+                self._conn.execute("DELETE FROM semantic_entries WHERE id = ?", (entry_id,))
+                self._conn.commit()
             return True
         return False
 
