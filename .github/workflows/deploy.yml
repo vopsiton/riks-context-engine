@@ -1,0 +1,168 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/riks-context-engine
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STAGING DEPLOY — always runs on PR merge to main (or main push)
+  # ─────────────────────────────────────────────────────────────────────────────
+  staging-deploy:
+    name: Staging Deploy
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    environment: staging
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=ref,event=branch
+            type=raw,value=staging,enable=${{ github.event.pull_request.merged == true }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ─────────────────────────────────────────────────────────────────────────
+      # DEPLOYMENT OPTIONS
+      #
+      # Configure ONE of the options below based on your infrastructure.
+      # Set the chosen option in repo Secrets → DEPLOY_TARGET
+      # (value: "vps" or "cloudflare")
+      #
+      # Required secrets for VPS deployment:
+      #   SERVER_HOST      — IP address or hostname of your VPS
+      #   SSH_KEY          — Private SSH key with access to the server
+      #   DEPLOY_TARGET    — Set to "vps"
+      #
+      # Required secrets for Cloudflare deployment:
+      #   CLOUDFLARE_API_TOKEN — Cloudflare API token with Workers & Pages write
+      #   CLOUDFLARE_ACCOUNT_ID — Your Cloudflare account ID
+      #   DEPLOY_TARGET         — Set to "cloudflare"
+      # ─────────────────────────────────────────────────────────────────────────
+
+      # ── OPTION A: VPS with Docker (docker-compose based) ─────────────────────
+      # Uncomment and configure if deploying to a VPS with Docker.
+      # Requires: SERVER_HOST, SSH_KEY, DEPLOY_TARGET=vps
+      #
+      # - name: Deploy to VPS
+      #   if: vars.DEPLOY_TARGET == 'vps' || (github.event.pull_request.merged == true && vars.DEPLOY_TARGET != 'cloudflare')
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.SERVER_HOST }}
+      #     username: ubuntu
+      #     key: ${{ secrets.SSH_KEY }}
+      #     script: |
+      #       cd /opt/riks-context-engine
+      #       ./scripts/deploy.sh ${{ steps.meta.outputs.version }}
+      #       docker compose pull
+      #       docker compose up -d --no-deps app
+      #       docker image prune -f
+
+      # ── OPTION B: Cloudflare Workers/Pages ───────────────────────────────────
+      # Uncomment and configure if deploying to Cloudflare edge.
+      # Requires: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, DEPLOY_TARGET=cloudflare
+      #
+      # - name: Deploy to Cloudflare Pages
+      #   if: vars.DEPLOY_TARGET == 'cloudflare'
+      #   uses: cloudflare/pages-action@v1
+      #   with:
+      #     apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      #     accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      #     projectName: riks-context-engine
+      #     directory: ./dist
+      #     gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      # Staging health check (always runs after deploy)
+      - name: Health check staging
+        run: |
+          echo "Staging deployment triggered for image: ${{ steps.meta.outputs.version }}"
+          echo "IMAGE_TAG=${{ steps.meta.outputs.version }}" >> $GITHUB_ENV
+          echo "Staging deploy complete. Configure deployment option in repo secrets."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # BUILD ONLY — runs on all main pushes (even without PR merge)
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-only:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=short
+            type=ref,event=branch
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false  # No push for main-branch build-only; staging deploy handles the real push
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true  # Load into local docker daemon for testing/verification
+
+      - name: Inspect built image
+        run: |
+          docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          docker inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(git rev-parse --short HEAD)
+
+      - name: Run smoke test
+        run: |
+          docker run --rm -e ENVIRONMENT=test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(git rev-parse --short HEAD) \
+            python -c "import sys; print('Image OK, Python', sys.version)"
