@@ -1,15 +1,12 @@
 """Tests for context module."""
 
-import pytest
 from datetime import datetime, timezone
 
 from riks_context_engine.context.manager import (
+    CHAR_PER_TOKEN,
+    TOKEN_BUFFER_PER_SIDE,
     ContextMessage,
     ContextWindowManager,
-    ContextStats,
-    TIERS,
-    TOKEN_BUFFER_PER_SIDE,
-    CHAR_PER_TOKEN,
 )
 
 
@@ -68,7 +65,7 @@ class TestContextWindowManager:
         """Grounding messages should never be pruned."""
         mgr = ContextWindowManager(max_tokens=2000)
         # Add grounding message
-        grounding = mgr.add(
+        mgr.add(
             role="system",
             content="User preferences: short replies",
             importance=0.9,
@@ -79,7 +76,7 @@ class TestContextWindowManager:
             mgr.add(role="user", content=f"Some content here {i}", importance=0.2)
 
         # Grounding message should still be present
-        active = mgr.get_messages()
+        _ = mgr.get_messages()
         assert any(m.is_grounding and not m.is_pruned for m in mgr.messages)
 
     def test_pruning_low_importance_first(self):
@@ -96,9 +93,9 @@ class TestContextWindowManager:
 
     def test_get_messages_excludes_pruned(self):
         mgr = ContextWindowManager(max_tokens=1000)
-        msg1 = mgr.add(role="user", content="First", importance=0.5)
-        msg2 = mgr.add(role="user", content="Second", importance=0.3)
-        msg3 = mgr.add(role="user", content="Third", importance=0.8)
+        mgr.add(role="user", content="First", importance=0.5)
+        mgr.add(role="user", content="Second", importance=0.3)
+        mgr.add(role="user", content="Third", importance=0.8)
 
         # Add more to trigger pruning
         for i in range(30):
@@ -109,7 +106,7 @@ class TestContextWindowManager:
 
     def test_get_messages_include_pruned(self):
         mgr = ContextWindowManager(max_tokens=1000)
-        msg1 = mgr.add(role="user", content="First", importance=0.5)
+        mgr.add(role="user", content="First", importance=0.5)
         for i in range(30):
             mgr.add(role="user", content=f"Fill {i}", importance=0.1)
 

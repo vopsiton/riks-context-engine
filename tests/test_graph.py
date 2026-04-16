@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+
 from riks_context_engine.graph.knowledge_graph import (
     EntityType,
     KnowledgeGraph,

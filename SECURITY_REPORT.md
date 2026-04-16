@@ -63,7 +63,7 @@
 
 - **Description:** `ProceduralMemory`, `EpisodicMemory`, and `SemanticMemory` accept a `storage_path` parameter that is used directly to open files without validating that the resolved path is within the intended directory. A malicious caller could pass `storage_path="/etc/passwd"` or `"../../../etc/passwd"` to overwrite sensitive system files (injection via file writes).
 
-- **Location:** 
+- **Location:**
   - `src/riks_context_engine/memory/procedural.py`, `__init__`
   - `src/riks_context_engine/memory/episodic.py`, `__init__`
   - `src/riks_context_engine/memory/semantic.py`, `__init__`

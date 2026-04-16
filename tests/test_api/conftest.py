@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from riks_context_engine.api.server import app, get_engine
 from riks_context_engine.api import server as server_module
+from riks_context_engine.api.server import app, get_engine
 
 
 @pytest.fixture(autouse=True)

@@ -1,11 +1,9 @@
 """Tests for task decomposition."""
 
-import pytest
-
 from riks_context_engine.tasks.decomposer import (
+    Task,
     TaskDecomposer,
     TaskGraph,
-    Task,
     TaskStatus,
     infer_dependencies,
 )

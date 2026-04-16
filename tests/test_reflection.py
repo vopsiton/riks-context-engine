@@ -1,12 +1,8 @@
 """Tests for reflection analyzer."""
 
-import pytest
-from datetime import datetime, timezone
-
 from riks_context_engine.reflection.analyzer import (
-    ReflectionAnalyzer,
-    ReflectionReport,
     Lesson,
+    ReflectionAnalyzer,
     detect_category,
     extract_severity,
 )
