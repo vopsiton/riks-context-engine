@@ -30,6 +30,12 @@ ENV DATA_DIR=/app/data
 ENV ENVIRONMENT=development
 ENV OLLAMA_BASE_URL=http://host.docker.internal:11434
 
+# Create non-root user
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+
+# Switch to non-root user
+USER appuser
+
 # Expose default port
 EXPOSE 8000
 
