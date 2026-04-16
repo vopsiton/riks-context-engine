@@ -11,11 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files
 COPY pyproject.toml ./
 
+# Copy application code BEFORE installing the package
+COPY src/ ./src/
+
 # Install Python dependencies
 RUN pip install --no-cache-dir -e ".[dev]"
 
-# Copy application code
-COPY src/ ./src/
+# Copy tests
 COPY tests/ ./tests/
 
 # Create data directory

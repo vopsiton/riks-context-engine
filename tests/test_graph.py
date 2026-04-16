@@ -31,7 +31,8 @@ class TestCosineSimilarity:
 
 class TestKnowledgeGraph:
     def test_init(self):
-        kg = KnowledgeGraph()
+        # Use in-memory DB to avoid leftover data from previous runs
+        kg = KnowledgeGraph(db_path=":memory:")
         assert len(kg._entities) == 0
         assert len(kg._relationships) == 0
 
