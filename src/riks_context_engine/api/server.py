@@ -2,27 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from riks_context_engine.context.manager import ContextWindowManager, ContextMessage
-from riks_context_engine.memory.episodic import EpisodicMemory, EpisodicEntry
-from riks_context_engine.memory.semantic import SemanticMemory, SemanticEntry
-from riks_context_engine.memory.procedural import ProceduralMemory, Procedure
+from riks_context_engine.context.manager import ContextWindowManager
 from riks_context_engine.graph.knowledge_graph import (
-    KnowledgeGraph,
     Entity,
-    Relationship,
     EntityType,
+    KnowledgeGraph,
     RelationshipType,
 )
-from riks_context_engine.tasks.decomposer import TaskDecomposer, TaskGraph, Task, TaskStatus
-from riks_context_engine.reflection.analyzer import ReflectionAnalyzer, ReflectionReport, Lesson
+from riks_context_engine.memory.episodic import EpisodicMemory
+from riks_context_engine.memory.procedural import ProceduralMemory
+from riks_context_engine.memory.semantic import SemanticMemory
+from riks_context_engine.reflection.analyzer import ReflectionAnalyzer
+from riks_context_engine.tasks.decomposer import TaskDecomposer
 
 # ─── Pydantic request/response models ─────────────────────────────────────────
+
 
 class MessageAddRequest(BaseModel):
     role: str = Field(..., pattern="^(user|assistant|system)$")
@@ -30,6 +29,7 @@ class MessageAddRequest(BaseModel):
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
     is_grounding: bool = False
     priority_tier: int = Field(default=2, ge=0, le=3)
+
 
 class MessageAddResponse(BaseModel):
     id: str
@@ -41,6 +41,7 @@ class MessageAddResponse(BaseModel):
     is_grounding: bool
     priority_tier: int
 
+
 class ContextStatsResponse(BaseModel):
     current_tokens: int
     max_tokens: int
@@ -51,10 +52,12 @@ class ContextStatsResponse(BaseModel):
     tokens_remaining: int
     needs_pruning: bool
 
+
 class EpisodicAddRequest(BaseModel):
     content: str
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
     tags: Optional[list[str]] = None
+
 
 class SemanticAddRequest(BaseModel):
     subject: str
@@ -62,15 +65,18 @@ class SemanticAddRequest(BaseModel):
     object: Optional[str] = None
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
 
+
 class ProcedureStoreRequest(BaseModel):
     name: str
     description: str
     steps: list[str]
 
+
 class EntityAddRequest(BaseModel):
     name: str
     entity_type: str
     properties: Optional[dict] = None
+
 
 class RelationCreateRequest(BaseModel):
     from_entity_id: str
@@ -78,9 +84,11 @@ class RelationCreateRequest(BaseModel):
     relationship_type: str
     confidence: float = 1.0
 
+
 class GoalDecomposeRequest(BaseModel):
     goal: str
     execute: bool = False
+
 
 class ReflectionAnalyzeRequest(BaseModel):
     interaction_id: str
@@ -88,6 +96,7 @@ class ReflectionAnalyzeRequest(BaseModel):
 
 
 # ─── Engine wrapper (holds all subsystems) ─────────────────────────────────────
+
 
 class ContextEngine:
     """In-memory context engine combining all subsystems."""
@@ -109,6 +118,7 @@ app = FastAPI(title="Rik's Context Engine API", version="0.1.0")
 # Module-level engine instance
 _engine: ContextEngine | None = None
 
+
 def get_engine() -> ContextEngine:
     global _engine
     if _engine is None:
@@ -118,12 +128,14 @@ def get_engine() -> ContextEngine:
 
 # ─── Health ────────────────────────────────────────────────────────────────────
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
 # ─── Context Window ─────────────────────────────────────────────────────────────
+
 
 @app.post("/api/context/messages", response_model=MessageAddResponse)
 def context_add_message(body: MessageAddRequest, engine: ContextEngine = Depends(get_engine)):
@@ -145,6 +157,7 @@ def context_add_message(body: MessageAddRequest, engine: ContextEngine = Depends
         priority_tier=msg.priority_tier,
     )
 
+
 @app.get("/api/context/messages", response_model=list[MessageAddResponse])
 def context_get_messages(include_pruned: bool = False, engine: ContextEngine = Depends(get_engine)):
     messages = engine.context.get_messages(include_pruned=include_pruned)
@@ -162,6 +175,7 @@ def context_get_messages(include_pruned: bool = False, engine: ContextEngine = D
         for m in messages
     ]
 
+
 @app.get("/api/context/stats", response_model=ContextStatsResponse)
 def context_stats(engine: ContextEngine = Depends(get_engine)):
     s = engine.context.stats
@@ -176,6 +190,7 @@ def context_stats(engine: ContextEngine = Depends(get_engine)):
         needs_pruning=engine.context.needs_pruning(),
     )
 
+
 @app.post("/api/context/prune")
 def context_prune(engine: ContextEngine = Depends(get_engine)):
     before = engine.context.stats.current_tokens
@@ -186,6 +201,7 @@ def context_prune(engine: ContextEngine = Depends(get_engine)):
         "tokens_after": engine.context.stats.current_tokens,
     }
 
+
 @app.post("/api/context/reset")
 def context_reset(engine: ContextEngine = Depends(get_engine)):
     engine.context.reset()
@@ -193,6 +209,7 @@ def context_reset(engine: ContextEngine = Depends(get_engine)):
 
 
 # ─── Episodic Memory ───────────────────────────────────────────────────────────
+
 
 @app.post("/api/memory/episodic", status_code=201)
 def episodic_add(body: EpisodicAddRequest, engine: ContextEngine = Depends(get_engine)):
@@ -204,6 +221,7 @@ def episodic_add(body: EpisodicAddRequest, engine: ContextEngine = Depends(get_e
         "tags": entry.tags,
         "timestamp": entry.timestamp.isoformat(),
     }
+
 
 @app.get("/api/memory/episodic/{entry_id}")
 def episodic_get(entry_id: str, engine: ContextEngine = Depends(get_engine)):
@@ -218,14 +236,18 @@ def episodic_get(entry_id: str, engine: ContextEngine = Depends(get_engine)):
         "timestamp": entry.timestamp.isoformat(),
     }
 
+
 @app.delete("/api/memory/episodic/{entry_id}")
 def episodic_delete(entry_id: str, engine: ContextEngine = Depends(get_engine)):
     if not engine.episodic.delete(entry_id):
         raise HTTPException(status_code=404, detail="Episodic entry not found")
     return {"deleted": True}
 
+
 @app.get("/api/memory/episodic", response_model=list[dict])
-def episodic_query(q: str = Query(..., alias="query"), limit: int = 10, engine: ContextEngine = Depends(get_engine)):
+def episodic_query(
+    q: str = Query(..., alias="query"), limit: int = 10, engine: ContextEngine = Depends(get_engine)
+):
     entries = engine.episodic.query(query=q, limit=limit)
     return [
         {
@@ -240,6 +262,7 @@ def episodic_query(q: str = Query(..., alias="query"), limit: int = 10, engine: 
 
 
 # ─── Semantic Memory ───────────────────────────────────────────────────────────
+
 
 @app.post("/api/memory/semantic", status_code=201)
 def semantic_add(body: SemanticAddRequest, engine: ContextEngine = Depends(get_engine)):
@@ -260,6 +283,7 @@ def semantic_add(body: SemanticAddRequest, engine: ContextEngine = Depends(get_e
         "access_count": entry.access_count,
     }
 
+
 @app.get("/api/memory/semantic/{entry_id}")
 def semantic_get(entry_id: str, engine: ContextEngine = Depends(get_engine)):
     entry = engine.semantic.get(entry_id)
@@ -276,11 +300,13 @@ def semantic_get(entry_id: str, engine: ContextEngine = Depends(get_engine)):
         "access_count": entry.access_count,
     }
 
+
 @app.delete("/api/memory/semantic/{entry_id}")
 def semantic_delete(entry_id: str, engine: ContextEngine = Depends(get_engine)):
     if not engine.semantic.delete(entry_id):
         raise HTTPException(status_code=404, detail="Semantic entry not found")
     return {"deleted": True}
+
 
 @app.get("/api/memory/semantic", response_model=list[dict])
 def semantic_query(
@@ -310,6 +336,7 @@ def semantic_query(
 
 # ─── Procedural Memory ─────────────────────────────────────────────────────────
 
+
 @app.post("/api/memory/procedural", status_code=201)
 def procedural_store(body: ProcedureStoreRequest, engine: ContextEngine = Depends(get_engine)):
     proc = engine.procedural.store(name=body.name, description=body.description, steps=body.steps)
@@ -323,6 +350,7 @@ def procedural_store(body: ProcedureStoreRequest, engine: ContextEngine = Depend
         "use_count": proc.use_count,
         "success_rate": proc.success_rate,
     }
+
 
 @app.get("/api/memory/procedural/{proc_id}")
 def procedural_get(proc_id: str, engine: ContextEngine = Depends(get_engine)):
@@ -340,6 +368,7 @@ def procedural_get(proc_id: str, engine: ContextEngine = Depends(get_engine)):
         "success_rate": proc.success_rate,
     }
 
+
 @app.delete("/api/memory/procedural/{proc_id}")
 def procedural_delete(proc_id: str, engine: ContextEngine = Depends(get_engine)):
     proc = engine.procedural.get(proc_id)
@@ -347,8 +376,11 @@ def procedural_delete(proc_id: str, engine: ContextEngine = Depends(get_engine))
         raise HTTPException(status_code=404, detail="Procedure not found")
     return {"deleted": True}
 
+
 @app.get("/api/memory/procedural", response_model=list[dict])
-def procedural_find(q: str = Query(..., alias="query"), engine: ContextEngine = Depends(get_engine)):
+def procedural_find(
+    q: str = Query(..., alias="query"), engine: ContextEngine = Depends(get_engine)
+):
     procs = engine.procedural.find(query=q)
     return [
         {
@@ -367,13 +399,16 @@ def procedural_find(q: str = Query(..., alias="query"), engine: ContextEngine = 
 
 # ─── Knowledge Graph ────────────────────────────────────────────────────────────
 
+
 @app.post("/api/graph/entities", status_code=201)
 def graph_add_entity(body: EntityAddRequest, engine: ContextEngine = Depends(get_engine)):
     try:
         entity_type = EntityType(body.entity_type)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid entity_type: {body.entity_type}")
-    entity = engine.graph.add_entity(name=body.name, entity_type=entity_type, properties=body.properties)
+    entity = engine.graph.add_entity(
+        name=body.name, entity_type=entity_type, properties=body.properties
+    )
     return {
         "id": entity.id,
         "name": entity.name,
@@ -382,6 +417,7 @@ def graph_add_entity(body: EntityAddRequest, engine: ContextEngine = Depends(get
         "created_at": entity.created_at.isoformat(),
         "last_updated": entity.last_updated.isoformat(),
     }
+
 
 @app.get("/api/graph/entities/{entity_id}")
 def graph_get_entity(entity_id: str, engine: ContextEngine = Depends(get_engine)):
@@ -397,12 +433,15 @@ def graph_get_entity(entity_id: str, engine: ContextEngine = Depends(get_engine)
         "last_updated": entity.last_updated.isoformat(),
     }
 
+
 @app.post("/api/graph/relations", status_code=201)
 def graph_relate(body: RelationCreateRequest, engine: ContextEngine = Depends(get_engine)):
     try:
         rel_type = RelationshipType(body.relationship_type)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid relationship_type: {body.relationship_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid relationship_type: {body.relationship_type}"
+        )
 
     from_entity = engine.graph.get_entity(body.from_entity_id)
     to_entity = engine.graph.get_entity(body.to_entity_id)
@@ -421,6 +460,7 @@ def graph_relate(body: RelationCreateRequest, engine: ContextEngine = Depends(ge
         "created_at": rel.created_at.isoformat(),
     }
 
+
 @app.get("/api/graph/entities/{entity_id}/relationships")
 def graph_entity_rels(entity_id: str, engine: ContextEngine = Depends(get_engine)):
     rels = engine.graph.get_relationships(entity_id)
@@ -435,6 +475,7 @@ def graph_entity_rels(entity_id: str, engine: ContextEngine = Depends(get_engine
         for r in rels
     ]
 
+
 @app.get("/api/graph/query")
 def graph_query(
     entity_name: Optional[str] = None,
@@ -446,26 +487,31 @@ def graph_query(
     out = []
     for r in results:
         if isinstance(r, Entity):
-            out.append({
-                "type": "entity",
-                "id": r.id,
-                "name": r.name,
-                "entity_type": r.entity_type.value,
-                "properties": r.properties,
-            })
+            out.append(
+                {
+                    "type": "entity",
+                    "id": r.id,
+                    "name": r.name,
+                    "entity_type": r.entity_type.value,
+                    "properties": r.properties,
+                }
+            )
         else:
-            out.append({
-                "type": "relationship",
-                "id": r.id,
-                "from_entity_id": r.from_entity_id,
-                "to_entity_id": r.to_entity_id,
-                "relationship_type": r.relationship_type.value,
-                "confidence": r.confidence,
-            })
+            out.append(
+                {
+                    "type": "relationship",
+                    "id": r.id,
+                    "from_entity_id": r.from_entity_id,
+                    "to_entity_id": r.to_entity_id,
+                    "relationship_type": r.relationship_type.value,
+                    "confidence": r.confidence,
+                }
+            )
     return out
 
 
 # ─── Task Decomposition ────────────────────────────────────────────────────────
+
 
 @app.post("/api/tasks/decompose")
 def tasks_decompose(body: GoalDecomposeRequest, engine: ContextEngine = Depends(get_engine)):
@@ -494,12 +540,14 @@ def tasks_decompose(body: GoalDecomposeRequest, engine: ContextEngine = Depends(
         "validation_error": err,
     }
 
+
 @app.get("/api/tasks/{task_id}")
 def tasks_get(task_id: str, engine: ContextEngine = Depends(get_engine)):
     raise HTTPException(status_code=404, detail="Task not found")
 
 
 # ─── Self-Reflection ───────────────────────────────────────────────────────────
+
 
 @app.post("/api/reflection/analyze")
 def reflection_analyze(body: ReflectionAnalyzeRequest, engine: ContextEngine = Depends(get_engine)):
@@ -527,6 +575,7 @@ def reflection_analyze(body: ReflectionAnalyzeRequest, engine: ContextEngine = D
         "timestamp": report.timestamp.isoformat(),
     }
 
+
 @app.get("/api/reflection/lessons")
 def reflection_lessons(engine: ContextEngine = Depends(get_engine)):
     lessons = engine.reflection.get_active_lessons()
@@ -543,12 +592,14 @@ def reflection_lessons(engine: ContextEngine = Depends(get_engine)):
         for l in lessons
     ]
 
+
 @app.post("/api/reflection/resolve/{lesson_id}")
 def reflection_resolve(lesson_id: str, engine: ContextEngine = Depends(get_engine)):
     resolved = engine.reflection.resolve_lesson(lesson_id)
     if not resolved:
         raise HTTPException(status_code=404, detail="Lesson not found")
     return {"resolved": True}
+
 
 @app.get("/api/reflection/mistakes")
 def reflection_mistakes(engine: ContextEngine = Depends(get_engine)):

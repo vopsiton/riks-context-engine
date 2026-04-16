@@ -37,10 +37,7 @@ class TestContextWindowManager:
     def test_grounding_message_flag(self):
         mgr = ContextWindowManager(max_tokens=10_000)
         msg = mgr.add(
-            role="system",
-            content="User prefers short replies",
-            importance=0.9,
-            is_grounding=True
+            role="system", content="User prefers short replies", importance=0.9, is_grounding=True
         )
         assert msg.is_grounding is True
 
@@ -75,7 +72,7 @@ class TestContextWindowManager:
             role="system",
             content="User preferences: short replies",
             importance=0.9,
-            is_grounding=True
+            is_grounding=True,
         )
         # Add lots of other content
         for i in range(30):
@@ -131,10 +128,7 @@ class TestContextWindowManager:
         """Tier 0 messages should never be pruned."""
         mgr = ContextWindowManager(max_tokens=1000)
         protected = mgr.add(
-            role="system",
-            content="Critical system prompt",
-            importance=0.5,
-            priority_tier=0
+            role="system", content="Critical system prompt", importance=0.5, priority_tier=0
         )
         # Fill with low priority content
         for i in range(50):

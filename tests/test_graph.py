@@ -68,6 +68,7 @@ class TestKnowledgeGraph:
 
     def test_query_by_relationship_type(self):
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -79,6 +80,7 @@ class TestKnowledgeGraph:
 
     def test_expand(self):
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -91,6 +93,7 @@ class TestKnowledgeGraph:
 
     def test_find_path(self):
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -112,6 +115,7 @@ class TestKnowledgeGraph:
 
     def test_get_relationships(self):
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -166,6 +170,7 @@ class TestKnowledgeGraphEmbedding:
                 "Opsiton": [0.0, 0.0, 1.0],
             }
             return MagicMock(embedding=emb_map.get(text, [0.0] * 3), model="test", prompt_tokens=1)
+
         embedder = MagicMock()
         embedder.embed.side_effect = embed_side_effect
 
@@ -194,6 +199,7 @@ class TestKnowledgeGraphEmbedding:
                 "Rik": [0.0, 1.0],
             }
             return MagicMock(embedding=emb_map.get(text, [0.0] * 2), model="test", prompt_tokens=1)
+
         embedder = MagicMock()
         embedder.embed.side_effect = embed_side_effect
 
@@ -214,12 +220,15 @@ class TestKnowledgeGraphEmbedding:
 
     def test_reembed_entity(self):
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
-        embedder = self._mock_embedder({
-            "Vahit": [0.1] * 5,
-            "Vahit Updated": [0.9] * 5,
-        })
+        embedder = self._mock_embedder(
+            {
+                "Vahit": [0.1] * 5,
+                "Vahit Updated": [0.9] * 5,
+            }
+        )
         kg = KnowledgeGraph(db_path, embedder=embedder)
         e1 = kg.add_entity("Vahit", EntityType.PERSON)
         assert e1.embedding == [0.1] * 5
@@ -236,6 +245,7 @@ class TestKnowledgeGraphEmbedding:
 
     def test_embedding_persisted_to_db(self):
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         embedder = self._mock_embedder({"Vahit": [0.1] * 5})

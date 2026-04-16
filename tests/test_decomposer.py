@@ -110,12 +110,13 @@ def test_infer_dependencies():
 def test_task_type_inference():
     """Test that task types are correctly classified."""
     from riks_context_engine.tasks.decomposer import TaskDecomposer
+
     decomposer = TaskDecomposer()
     graph = decomposer.decompose("Setup config, build project, test feature")
-    
+
     types_found = set()
     for task in graph.tasks:
         types_found.add(task.name.split(":")[0])
-    
+
     # Should have different types for setup, build, test
     assert len(types_found) >= 2

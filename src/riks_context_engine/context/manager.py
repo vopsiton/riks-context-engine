@@ -1,6 +1,6 @@
 """Context window manager - intelligent pruning and coherence."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -49,9 +49,9 @@ TOKEN_BUFFER_PER_SIDE = 512  # Reserve buffer on each side
 
 # Priority tier definitions
 TIER_0_PROTECTED = 0  # System instructions, critical config
-TIER_1_HIGH = 1      # User preferences, tool results, decisions
-TIER_2_MEDIUM = 2    # Regular conversation
-TIER_3_LOW = 3       # Older, low-importance messages
+TIER_1_HIGH = 1  # User preferences, tool results, decisions
+TIER_2_MEDIUM = 2  # Regular conversation
+TIER_3_LOW = 3  # Older, low-importance messages
 
 TIERS = {
     0: "protected",
@@ -59,7 +59,6 @@ TIERS = {
     2: "medium",
     3: "low",
 }
-
 
 
 class ContextWindowManager:
@@ -187,8 +186,9 @@ class ContextWindowManager:
     def _contains_non_latin(self, text: str) -> bool:
         """Check if text contains non-Latin characters."""
         import re
+
         # CJK, Arabic, Cyrillic, etc.
-        return bool(re.search(r'[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff]', text))
+        return bool(re.search(r"[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff]", text))
 
     def _update_stats(self) -> None:
         """Update context statistics."""
@@ -207,7 +207,9 @@ class ContextWindowManager:
             return
 
         prune_targets: list[ContextMessage] = []
-        tokens_to_free = abs(self.tokens_remaining()) + (self.usable_tokens // 10)  # Free 10% buffer
+        tokens_to_free = abs(self.tokens_remaining()) + (
+            self.usable_tokens // 10
+        )  # Free 10% buffer
 
         # Collect candidates: non-protected, non-grounding, not tier 0
         for msg in self.messages:
@@ -259,7 +261,9 @@ class ContextWindowManager:
 
         # Ensure grounding messages are present if any were added
         grounding_messages = [m for m in self.messages if m.is_grounding]
-        if grounding_messages and not any(m.is_grounding and not m.is_pruned for m in self.messages):
+        if grounding_messages and not any(
+            m.is_grounding and not m.is_pruned for m in self.messages
+        ):
             return False
 
         return True

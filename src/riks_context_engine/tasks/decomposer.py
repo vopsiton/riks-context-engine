@@ -1,10 +1,10 @@
 """Task decomposition - goal → executable steps."""
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
-import re
 
 
 class TaskStatus(Enum):
@@ -117,7 +117,7 @@ def infer_dependencies(tasks: list[Task]) -> list[Task]:
     for tasks_in_cat in task_types.values():
         for i in range(1, len(tasks_in_cat)):
             # Add dependency on previous task in same category
-            prev_id = tasks_in_cat[i-1].id
+            prev_id = tasks_in_cat[i - 1].id
             if prev_id not in tasks_in_cat[i].dependencies:
                 tasks_in_cat[i].dependencies.append(prev_id)
 
@@ -151,9 +151,9 @@ class TaskDecomposer:
         # Check for common goal patterns
         if "and" in goal_lower or "," in goal_lower:
             # Split by common delimiters
-            parts = re.split(r',\s*(?:and\s+)?|\s+and\s+', goal)
+            parts = re.split(r",\s*(?:and\s+)?|\s+and\s+", goal)
             for i, part in enumerate(parts):
-                part = part.strip().strip('.')
+                part = part.strip().strip(".")
                 if len(part) > 3:
                     task = self._create_task(part, i)
                     tasks.append(task)

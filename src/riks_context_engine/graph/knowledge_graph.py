@@ -86,7 +86,8 @@ class KnowledgeGraph:
             return
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
-        conn.executescript("""
+        conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS entities (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -110,7 +111,8 @@ class KnowledgeGraph:
             CREATE INDEX IF NOT EXISTS idx_rels_from ON relationships(from_entity_id);
             CREATE INDEX IF NOT EXISTS idx_rels_to ON relationships(to_entity_id);
             CREATE INDEX IF NOT EXISTS idx_rels_type ON relationships(relationship_type);
-        """)
+        """
+        )
         # Add embedding column to existing tables (idempotent migration)
         try:
             conn.execute("ALTER TABLE entities ADD COLUMN embedding TEXT")
@@ -288,7 +290,9 @@ class KnowledgeGraph:
         conn.commit()
         conn.close()
 
-    def query(self, entity_name: str | None = None, relationship_type: RelationshipType | None = None) -> list[Entity | Relationship]:
+    def query(
+        self, entity_name: str | None = None, relationship_type: RelationshipType | None = None
+    ) -> list[Entity | Relationship]:
         """Query the knowledge graph by entity name or relationship type.
 
         Args:
@@ -330,7 +334,6 @@ class KnowledgeGraph:
         if entity_id not in self._entities:
             return []
 
-
         results: list[tuple[Entity, Relationship]] = []
         visited: set[str] = {entity_id}
         queue: list[tuple[str, int]] = [(entity_id, 0)]
@@ -368,7 +371,9 @@ class KnowledgeGraph:
             if rel.from_entity_id == entity_id or rel.to_entity_id == entity_id
         ]
 
-    def find_path(self, from_entity_id: str, to_entity_id: str, max_depth: int = 3) -> list[Relationship] | None:
+    def find_path(
+        self, from_entity_id: str, to_entity_id: str, max_depth: int = 3
+    ) -> list[Relationship] | None:
         """Find a path between two entities using BFS.
 
         Args:

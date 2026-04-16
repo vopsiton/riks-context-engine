@@ -87,8 +87,12 @@ class TestReflectionAnalyzer:
     def test_resolve_lesson(self):
         analyzer = ReflectionAnalyzer()
         analyzer._lessons["l1"] = Lesson(
-            id="l1", category="general", observation="test",
-            lesson_text="test", severity="info", resolved=False
+            id="l1",
+            category="general",
+            observation="test",
+            lesson_text="test",
+            severity="info",
+            resolved=False,
         )
         assert analyzer.resolve_lesson("l1") is True
         assert analyzer._lessons["l1"].resolved is True
@@ -97,12 +101,20 @@ class TestReflectionAnalyzer:
     def test_get_active_lessons(self):
         analyzer = ReflectionAnalyzer()
         analyzer._lessons["l1"] = Lesson(
-            id="l1", category="general", observation="test",
-            lesson_text="test", severity="info", resolved=False
+            id="l1",
+            category="general",
+            observation="test",
+            lesson_text="test",
+            severity="info",
+            resolved=False,
         )
         analyzer._lessons["l2"] = Lesson(
-            id="l2", category="general", observation="test",
-            lesson_text="test", severity="info", resolved=True
+            id="l2",
+            category="general",
+            observation="test",
+            lesson_text="test",
+            severity="info",
+            resolved=True,
         )
         active = analyzer.get_active_lessons()
         assert len(active) == 1

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 # ─── Health ───────────────────────────────────────────────────────────────────
 
+
 class TestHealth:
     def test_health_ok(self, client: TestClient):
         res = client.get("/health")
@@ -17,15 +18,19 @@ class TestHealth:
 
 # ─── Context Window ───────────────────────────────────────────────────────────
 
+
 class TestContextMessages:
     def test_add_message_user(self, client: TestClient):
-        res = client.post("/api/context/messages", json={
-            "role": "user",
-            "content": "Hello, world!",
-            "importance": 0.8,
-            "is_grounding": True,
-            "priority_tier": 1,
-        })
+        res = client.post(
+            "/api/context/messages",
+            json={
+                "role": "user",
+                "content": "Hello, world!",
+                "importance": 0.8,
+                "is_grounding": True,
+                "priority_tier": 1,
+            },
+        )
         assert res.status_code == 200
         data = res.json()
         assert data["role"] == "user"
@@ -36,33 +41,45 @@ class TestContextMessages:
         assert "id" in data
 
     def test_add_message_assistant(self, client: TestClient):
-        res = client.post("/api/context/messages", json={
-            "role": "assistant",
-            "content": "Hi there!",
-            "importance": 0.5,
-        })
+        res = client.post(
+            "/api/context/messages",
+            json={
+                "role": "assistant",
+                "content": "Hi there!",
+                "importance": 0.5,
+            },
+        )
         assert res.status_code == 200
         assert res.json()["role"] == "assistant"
 
     def test_add_message_invalid_role(self, client: TestClient):
-        res = client.post("/api/context/messages", json={
-            "role": "bot",
-            "content": "I am not valid",
-        })
+        res = client.post(
+            "/api/context/messages",
+            json={
+                "role": "bot",
+                "content": "I am not valid",
+            },
+        )
         assert res.status_code == 422  # Pydantic validation error
 
     def test_add_message_missing_content(self, client: TestClient):
-        res = client.post("/api/context/messages", json={
-            "role": "user",
-        })
+        res = client.post(
+            "/api/context/messages",
+            json={
+                "role": "user",
+            },
+        )
         assert res.status_code == 422
 
     def test_add_message_negative_importance(self, client: TestClient):
-        res = client.post("/api/context/messages", json={
-            "role": "user",
-            "content": "test",
-            "importance": -1.0,
-        })
+        res = client.post(
+            "/api/context/messages",
+            json={
+                "role": "user",
+                "content": "test",
+                "importance": -1.0,
+            },
+        )
         assert res.status_code == 422
 
     def test_get_messages_default(self, client: TestClient):
@@ -78,7 +95,10 @@ class TestContextMessages:
         client.post("/api/context/messages", json={"role": "user", "content": "Keep"})
         # Exceed token limit to force pruning
         for _ in range(200):
-            client.post("/api/context/messages", json={"role": "user", "content": "Lorem ipsum dolor sit amet " * 10})
+            client.post(
+                "/api/context/messages",
+                json={"role": "user", "content": "Lorem ipsum dolor sit amet " * 10},
+            )
         res = client.get("/api/context/messages", params={"include_pruned": True})
         assert res.status_code == 200
         # With include_pruned we should see all messages including pruned ones
@@ -110,12 +130,15 @@ class TestContextPrune:
     def test_prune_triggers_pruning(self, client: TestClient):
         # Add enough messages to potentially need pruning
         for i in range(100):
-            client.post("/api/context/messages", json={
-                "role": "user",
-                "content": f"Message number {i} with some content " * 5,
-                "importance": 0.3,
-                "priority_tier": 3,
-            })
+            client.post(
+                "/api/context/messages",
+                json={
+                    "role": "user",
+                    "content": f"Message number {i} with some content " * 5,
+                    "importance": 0.3,
+                    "priority_tier": 3,
+                },
+            )
         res = client.post("/api/context/prune")
         assert res.status_code == 200
         data = res.json()
@@ -138,13 +161,17 @@ class TestContextReset:
 
 # ─── Episodic Memory ───────────────────────────────────────────────────────────
 
+
 class TestEpisodicAdd:
     def test_add_entry(self, client: TestClient):
-        res = client.post("/api/memory/episodic", json={
-            "content": "User asked about shipping",
-            "importance": 0.7,
-            "tags": ["shipping", "question"],
-        })
+        res = client.post(
+            "/api/memory/episodic",
+            json={
+                "content": "User asked about shipping",
+                "importance": 0.7,
+                "tags": ["shipping", "question"],
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["content"] == "User asked about shipping"
@@ -153,9 +180,12 @@ class TestEpisodicAdd:
         assert "id" in data
 
     def test_add_entry_minimal(self, client: TestClient):
-        res = client.post("/api/memory/episodic", json={
-            "content": "Simple note",
-        })
+        res = client.post(
+            "/api/memory/episodic",
+            json={
+                "content": "Simple note",
+            },
+        )
         assert res.status_code == 201
         assert res.json()["importance"] == 0.5  # default
 
@@ -164,19 +194,25 @@ class TestEpisodicAdd:
         assert res.status_code == 422
 
     def test_add_entry_importance_out_of_range(self, client: TestClient):
-        res = client.post("/api/memory/episodic", json={
-            "content": "test",
-            "importance": 2.0,
-        })
+        res = client.post(
+            "/api/memory/episodic",
+            json={
+                "content": "test",
+                "importance": 2.0,
+            },
+        )
         assert res.status_code == 422
 
 
 class TestEpisodicGet:
     def test_get_existing(self, client: TestClient):
-        add_res = client.post("/api/memory/episodic", json={
-            "content": "Test entry",
-            "importance": 0.5,
-        })
+        add_res = client.post(
+            "/api/memory/episodic",
+            json={
+                "content": "Test entry",
+                "importance": 0.5,
+            },
+        )
         entry_id = add_res.json()["id"]
         res = client.get(f"/api/memory/episodic/{entry_id}")
         assert res.status_code == 200
@@ -222,7 +258,10 @@ class TestEpisodicQuery:
 
     def test_query_with_limit(self, client: TestClient):
         for i in range(5):
-            client.post("/api/memory/episodic", json={"content": f"Entry {i} with keyword", "importance": 0.5})
+            client.post(
+                "/api/memory/episodic",
+                json={"content": f"Entry {i} with keyword", "importance": 0.5},
+            )
         res = client.get("/api/memory/episodic", params={"query": "keyword", "limit": 2})
         assert res.status_code == 200
         assert len(res.json()) <= 2
@@ -230,14 +269,18 @@ class TestEpisodicQuery:
 
 # ─── Semantic Memory ───────────────────────────────────────────────────────────
 
+
 class TestSemanticAdd:
     def test_add_entry(self, client: TestClient):
-        res = client.post("/api/memory/semantic", json={
-            "subject": "Vahit",
-            "predicate": "works at",
-            "object": "Opsiton",
-            "confidence": 0.95,
-        })
+        res = client.post(
+            "/api/memory/semantic",
+            json={
+                "subject": "Vahit",
+                "predicate": "works at",
+                "object": "Opsiton",
+                "confidence": 0.95,
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["subject"] == "Vahit"
@@ -247,29 +290,38 @@ class TestSemanticAdd:
         assert "id" in data
 
     def test_add_entry_without_object(self, client: TestClient):
-        res = client.post("/api/memory/semantic", json={
-            "subject": "Python",
-            "predicate": "is a language",
-        })
+        res = client.post(
+            "/api/memory/semantic",
+            json={
+                "subject": "Python",
+                "predicate": "is a language",
+            },
+        )
         assert res.status_code == 201
         assert res.json()["object"] is None
 
     def test_add_entry_confidence_out_of_range(self, client: TestClient):
-        res = client.post("/api/memory/semantic", json={
-            "subject": "X",
-            "predicate": "Y",
-            "confidence": 1.5,
-        })
+        res = client.post(
+            "/api/memory/semantic",
+            json={
+                "subject": "X",
+                "predicate": "Y",
+                "confidence": 1.5,
+            },
+        )
         assert res.status_code == 422
 
 
 class TestSemanticGet:
     def test_get_existing(self, client: TestClient):
-        add_res = client.post("/api/memory/semantic", json={
-            "subject": "Rik",
-            "predicate": "is an AI agent",
-            "confidence": 1.0,
-        })
+        add_res = client.post(
+            "/api/memory/semantic",
+            json={
+                "subject": "Rik",
+                "predicate": "is an AI agent",
+                "confidence": 1.0,
+            },
+        )
         entry_id = add_res.json()["id"]
         res = client.get(f"/api/memory/semantic/{entry_id}")
         assert res.status_code == 200
@@ -282,10 +334,13 @@ class TestSemanticGet:
 
 class TestSemanticDelete:
     def test_delete_existing(self, client: TestClient):
-        add_res = client.post("/api/memory/semantic", json={
-            "subject": "Temp",
-            "predicate": "to delete",
-        })
+        add_res = client.post(
+            "/api/memory/semantic",
+            json={
+                "subject": "Temp",
+                "predicate": "to delete",
+            },
+        )
         entry_id = add_res.json()["id"]
         res = client.delete(f"/api/memory/semantic/{entry_id}")
         assert res.status_code == 200
@@ -300,73 +355,98 @@ class TestSemanticDelete:
 
 class TestSemanticQuery:
     def test_query_by_subject(self, client: TestClient):
-        client.post("/api/memory/semantic", json={"subject": "Kubernetes", "predicate": "is a", "object": "orchestrator"})
+        client.post(
+            "/api/memory/semantic",
+            json={"subject": "Kubernetes", "predicate": "is a", "object": "orchestrator"},
+        )
         res = client.get("/api/memory/semantic", params={"subject": "kubernetes"})
         assert res.status_code == 200
         results = res.json()
         assert any(r["subject"].lower() == "kubernetes" for r in results)
 
     def test_query_by_predicate(self, client: TestClient):
-        client.post("/api/memory/semantic", json={"subject": "Docker", "predicate": "containers", "object": "runc"})
+        client.post(
+            "/api/memory/semantic",
+            json={"subject": "Docker", "predicate": "containers", "object": "runc"},
+        )
         res = client.get("/api/memory/semantic", params={"predicate": "containers"})
         assert res.status_code == 200
         assert len(res.json()) >= 1
 
     def test_query_recall(self, client: TestClient):
-        client.post("/api/memory/semantic", json={"subject": "Context window", "predicate": "manages", "object": "tokens"})
+        client.post(
+            "/api/memory/semantic",
+            json={"subject": "Context window", "predicate": "manages", "object": "tokens"},
+        )
         res = client.get("/api/memory/semantic", params={"recall": "context"})
         assert res.status_code == 200
         results = res.json()
         assert len(results) >= 1
 
     def test_query_combined(self, client: TestClient):
-        client.post("/api/memory/semantic", json={"subject": "FastAPI", "predicate": "is fast", "object": "True"})
+        client.post(
+            "/api/memory/semantic",
+            json={"subject": "FastAPI", "predicate": "is fast", "object": "True"},
+        )
         res = client.get("/api/memory/semantic", params={"subject": "fastapi", "predicate": "fast"})
         assert res.status_code == 200
 
 
 # ─── Procedural Memory ─────────────────────────────────────────────────────────
 
+
 class TestProceduralStore:
     def test_store_procedure(self, client: TestClient):
-        res = client.post("/api/memory/procedural", json={
-            "name": "deploy_service",
-            "description": "Deploy a microservice to Kubernetes",
-            "steps": [
-                "Build Docker image",
-                "Push to registry",
-                "Apply Kubernetes manifests",
-                "Verify deployment",
-            ],
-        })
+        res = client.post(
+            "/api/memory/procedural",
+            json={
+                "name": "deploy_service",
+                "description": "Deploy a microservice to Kubernetes",
+                "steps": [
+                    "Build Docker image",
+                    "Push to registry",
+                    "Apply Kubernetes manifests",
+                    "Verify deployment",
+                ],
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["name"] == "deploy_service"
         assert len(data["steps"]) == 4
 
     def test_store_procedure_minimal(self, client: TestClient):
-        res = client.post("/api/memory/procedural", json={
-            "name": "simple_task",
-            "description": "A simple task",
-            "steps": ["Do thing"],
-        })
+        res = client.post(
+            "/api/memory/procedural",
+            json={
+                "name": "simple_task",
+                "description": "A simple task",
+                "steps": ["Do thing"],
+            },
+        )
         assert res.status_code == 201
 
     def test_store_procedure_missing_steps(self, client: TestClient):
-        res = client.post("/api/memory/procedural", json={
-            "name": "incomplete",
-            "description": "Missing steps",
-        })
+        res = client.post(
+            "/api/memory/procedural",
+            json={
+                "name": "incomplete",
+                "description": "Missing steps",
+            },
+        )
         assert res.status_code == 422
 
 
 class TestProceduralGet:
     def test_get_existing(self, client: TestClient):
-        add_res = client.post("/api/memory/procedural", json={
-            "name": "test_proc",
-            "description": "Test",
-            "steps": ["Step 1"],
-        })
+        add_res = client.post(
+            "/api/memory/procedural",
+            json={
+                "name": "test_proc",
+                "description": "Test",
+                "steps": ["Step 1"],
+            },
+        )
         proc_id = add_res.json()["id"]
         res = client.get(f"/api/memory/procedural/{proc_id}")
         assert res.status_code == 200
@@ -379,22 +459,28 @@ class TestProceduralGet:
 
 class TestProceduralFind:
     def test_find_by_name(self, client: TestClient):
-        client.post("/api/memory/procedural", json={
-            "name": "build_docker_image",
-            "description": "Build a Docker container image",
-            "steps": ["docker build", "docker push"],
-        })
+        client.post(
+            "/api/memory/procedural",
+            json={
+                "name": "build_docker_image",
+                "description": "Build a Docker container image",
+                "steps": ["docker build", "docker push"],
+            },
+        )
         res = client.get("/api/memory/procedural", params={"query": "docker"})
         assert res.status_code == 200
         results = res.json()
         assert any("docker" in r["name"].lower() for r in results)
 
     def test_find_by_description(self, client: TestClient):
-        client.post("/api/memory/procedural", json={
-            "name": "deploy_k8s",
-            "description": "Deploy to Kubernetes cluster",
-            "steps": ["kubectl apply"],
-        })
+        client.post(
+            "/api/memory/procedural",
+            json={
+                "name": "deploy_k8s",
+                "description": "Deploy to Kubernetes cluster",
+                "steps": ["kubectl apply"],
+            },
+        )
         res = client.get("/api/memory/procedural", params={"query": "kubernetes"})
         assert res.status_code == 200
         results = res.json()
@@ -408,13 +494,17 @@ class TestProceduralFind:
 
 # ─── Knowledge Graph ───────────────────────────────────────────────────────────
 
+
 class TestGraphEntities:
     def test_add_entity(self, client: TestClient):
-        res = client.post("/api/graph/entities", json={
-            "name": "Vahit",
-            "entity_type": "person",
-            "properties": {"role": "DevSecOps Lead"},
-        })
+        res = client.post(
+            "/api/graph/entities",
+            json={
+                "name": "Vahit",
+                "entity_type": "person",
+                "properties": {"role": "DevSecOps Lead"},
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["name"] == "Vahit"
@@ -422,24 +512,33 @@ class TestGraphEntities:
         assert data["properties"]["role"] == "DevSecOps Lead"
 
     def test_add_entity_invalid_type(self, client: TestClient):
-        res = client.post("/api/graph/entities", json={
-            "name": "ProjectX",
-            "entity_type": "invalid_type",
-        })
+        res = client.post(
+            "/api/graph/entities",
+            json={
+                "name": "ProjectX",
+                "entity_type": "invalid_type",
+            },
+        )
         assert res.status_code == 400
 
     def test_add_entity_minimal(self, client: TestClient):
-        res = client.post("/api/graph/entities", json={
-            "name": "Opsiton",
-            "entity_type": "project",
-        })
+        res = client.post(
+            "/api/graph/entities",
+            json={
+                "name": "Opsiton",
+                "entity_type": "project",
+            },
+        )
         assert res.status_code == 201
 
     def test_get_entity_existing(self, client: TestClient):
-        add_res = client.post("/api/graph/entities", json={
-            "name": "Rik",
-            "entity_type": "person",
-        })
+        add_res = client.post(
+            "/api/graph/entities",
+            json={
+                "name": "Rik",
+                "entity_type": "person",
+            },
+        )
         entity_id = add_res.json()["id"]
         res = client.get(f"/api/graph/entities/{entity_id}")
         assert res.status_code == 200
@@ -458,12 +557,15 @@ class TestGraphRelations:
         e1_id = e1_res.json()["id"]
         e2_id = e2_res.json()["id"]
 
-        res = client.post("/api/graph/relations", json={
-            "from_entity_id": e1_id,
-            "to_entity_id": e2_id,
-            "relationship_type": "works_with",
-            "confidence": 0.9,
-        })
+        res = client.post(
+            "/api/graph/relations",
+            json={
+                "from_entity_id": e1_id,
+                "to_entity_id": e2_id,
+                "relationship_type": "works_with",
+                "confidence": 0.9,
+            },
+        )
         assert res.status_code == 201
         data = res.json()
         assert data["from_entity_id"] == e1_id
@@ -474,29 +576,38 @@ class TestGraphRelations:
     def test_create_relation_invalid_type(self, client: TestClient):
         e1_res = client.post("/api/graph/entities", json={"name": "X", "entity_type": "concept"})
         e2_res = client.post("/api/graph/entities", json={"name": "Y", "entity_type": "concept"})
-        res = client.post("/api/graph/relations", json={
-            "from_entity_id": e1_res.json()["id"],
-            "to_entity_id": e2_res.json()["id"],
-            "relationship_type": "invalid_rel_type",
-        })
+        res = client.post(
+            "/api/graph/relations",
+            json={
+                "from_entity_id": e1_res.json()["id"],
+                "to_entity_id": e2_res.json()["id"],
+                "relationship_type": "invalid_rel_type",
+            },
+        )
         assert res.status_code == 400
 
     def test_create_relation_from_entity_not_found(self, client: TestClient):
         e2_res = client.post("/api/graph/entities", json={"name": "Y", "entity_type": "concept"})
-        res = client.post("/api/graph/relations", json={
-            "from_entity_id": "nonexistent_entity",
-            "to_entity_id": e2_res.json()["id"],
-            "relationship_type": "works_with",
-        })
+        res = client.post(
+            "/api/graph/relations",
+            json={
+                "from_entity_id": "nonexistent_entity",
+                "to_entity_id": e2_res.json()["id"],
+                "relationship_type": "works_with",
+            },
+        )
         assert res.status_code == 404
 
     def test_create_relation_to_entity_not_found(self, client: TestClient):
         e1_res = client.post("/api/graph/entities", json={"name": "X", "entity_type": "concept"})
-        res = client.post("/api/graph/relations", json={
-            "from_entity_id": e1_res.json()["id"],
-            "to_entity_id": "nonexistent_entity",
-            "relationship_type": "works_with",
-        })
+        res = client.post(
+            "/api/graph/relations",
+            json={
+                "from_entity_id": e1_res.json()["id"],
+                "to_entity_id": "nonexistent_entity",
+                "relationship_type": "works_with",
+            },
+        )
         assert res.status_code == 404
 
 
@@ -509,13 +620,20 @@ class TestGraphQuery:
         assert any(r.get("name", "").lower() == "kubernetes" for r in results)
 
     def test_query_by_relationship_type(self, client: TestClient):
-        e1 = client.post("/api/graph/entities", json={"name": "A", "entity_type": "concept"}).json()["id"]
-        e2 = client.post("/api/graph/entities", json={"name": "B", "entity_type": "concept"}).json()["id"]
-        client.post("/api/graph/relations", json={
-            "from_entity_id": e1,
-            "to_entity_id": e2,
-            "relationship_type": "related_to",
-        })
+        e1 = client.post(
+            "/api/graph/entities", json={"name": "A", "entity_type": "concept"}
+        ).json()["id"]
+        e2 = client.post(
+            "/api/graph/entities", json={"name": "B", "entity_type": "concept"}
+        ).json()["id"]
+        client.post(
+            "/api/graph/relations",
+            json={
+                "from_entity_id": e1,
+                "to_entity_id": e2,
+                "relationship_type": "related_to",
+            },
+        )
         res = client.get("/api/graph/query", params={"relationship_type": "related_to"})
         assert res.status_code == 200
 
@@ -525,13 +643,20 @@ class TestGraphQuery:
         assert res.status_code == 200
 
     def test_get_entity_relationships(self, client: TestClient):
-        e1 = client.post("/api/graph/entities", json={"name": "Alice", "entity_type": "person"}).json()["id"]
-        e2 = client.post("/api/graph/entities", json={"name": "Bob", "entity_type": "person"}).json()["id"]
-        client.post("/api/graph/relations", json={
-            "from_entity_id": e1,
-            "to_entity_id": e2,
-            "relationship_type": "knows_about",
-        })
+        e1 = client.post(
+            "/api/graph/entities", json={"name": "Alice", "entity_type": "person"}
+        ).json()["id"]
+        e2 = client.post(
+            "/api/graph/entities", json={"name": "Bob", "entity_type": "person"}
+        ).json()["id"]
+        client.post(
+            "/api/graph/relations",
+            json={
+                "from_entity_id": e1,
+                "to_entity_id": e2,
+                "relationship_type": "knows_about",
+            },
+        )
         res = client.get(f"/api/graph/entities/{e1}/relationships")
         assert res.status_code == 200
         rels = res.json()
@@ -540,11 +665,15 @@ class TestGraphQuery:
 
 # ─── Task Decomposition ────────────────────────────────────────────────────────
 
+
 class TestTaskDecompose:
     def test_decompose_simple_goal(self, client: TestClient):
-        res = client.post("/api/tasks/decompose", json={
-            "goal": "Setup CI/CD pipeline and deploy to production",
-        })
+        res = client.post(
+            "/api/tasks/decompose",
+            json={
+                "goal": "Setup CI/CD pipeline and deploy to production",
+            },
+        )
         assert res.status_code == 200
         data = res.json()
         assert data["goal"] == "Setup CI/CD pipeline and deploy to production"
@@ -553,18 +682,24 @@ class TestTaskDecompose:
         assert data["validation_error"] is None
 
     def test_decompose_multiple_parts(self, client: TestClient):
-        res = client.post("/api/tasks/decompose", json={
-            "goal": "Build the image, run tests, and deploy to cluster",
-        })
+        res = client.post(
+            "/api/tasks/decompose",
+            json={
+                "goal": "Build the image, run tests, and deploy to cluster",
+            },
+        )
         assert res.status_code == 200
         data = res.json()
         assert len(data["tasks"]) >= 3
 
     def test_decompose_with_execute(self, client: TestClient):
-        res = client.post("/api/tasks/decompose", json={
-            "goal": "Analyze logs and generate report",
-            "execute": True,
-        })
+        res = client.post(
+            "/api/tasks/decompose",
+            json={
+                "goal": "Analyze logs and generate report",
+                "execute": True,
+            },
+        )
         assert res.status_code == 200
         data = res.json()
         # After execution, tasks should have done status
@@ -583,15 +718,19 @@ class TestTaskDecompose:
 
 # ─── Self-Reflection ────────────────────────────────────────────────────────────
 
+
 class TestReflectionAnalyze:
     def test_analyze_success_interaction(self, client: TestClient):
-        res = client.post("/api/reflection/analyze", json={
-            "interaction_id": "int_001",
-            "conversation": [
-                {"role": "user", "content": "Deploy the service"},
-                {"role": "assistant", "content": "Deployment success - all pods running"},
-            ],
-        })
+        res = client.post(
+            "/api/reflection/analyze",
+            json={
+                "interaction_id": "int_001",
+                "conversation": [
+                    {"role": "user", "content": "Deploy the service"},
+                    {"role": "assistant", "content": "Deployment success - all pods running"},
+                ],
+            },
+        )
         assert res.status_code == 200
         data = res.json()
         assert data["interaction_id"] == "int_001"
@@ -600,36 +739,51 @@ class TestReflectionAnalyze:
         assert "lessons" in data
 
     def test_analyze_error_interaction(self, client: TestClient):
-        res = client.post("/api/reflection/analyze", json={
-            "interaction_id": "int_002",
-            "conversation": [
-                {"role": "user", "content": "Run the tests"},
-                {"role": "assistant", "content": "Test failed with error: timeout on endpoint /api/health"},
-                {"role": "user", "content": "Fix it"},
-            ],
-        })
+        res = client.post(
+            "/api/reflection/analyze",
+            json={
+                "interaction_id": "int_002",
+                "conversation": [
+                    {"role": "user", "content": "Run the tests"},
+                    {
+                        "role": "assistant",
+                        "content": "Test failed with error: timeout on endpoint /api/health",
+                    },
+                    {"role": "user", "content": "Fix it"},
+                ],
+            },
+        )
         assert res.status_code == 200
         data = res.json()
         # Should have detected something went wrong
         assert isinstance(data["went_wrong"], list)
 
     def test_analyze_empty_conversation(self, client: TestClient):
-        res = client.post("/api/reflection/analyze", json={
-            "interaction_id": "int_003",
-            "conversation": [],
-        })
+        res = client.post(
+            "/api/reflection/analyze",
+            json={
+                "interaction_id": "int_003",
+                "conversation": [],
+            },
+        )
         assert res.status_code == 200
 
     def test_analyze_missing_interaction_id(self, client: TestClient):
-        res = client.post("/api/reflection/analyze", json={
-            "conversation": [{"role": "user", "content": "test"}],
-        })
+        res = client.post(
+            "/api/reflection/analyze",
+            json={
+                "conversation": [{"role": "user", "content": "test"}],
+            },
+        )
         assert res.status_code == 422
 
     def test_analyze_missing_conversation(self, client: TestClient):
-        res = client.post("/api/reflection/analyze", json={
-            "interaction_id": "int_004",
-        })
+        res = client.post(
+            "/api/reflection/analyze",
+            json={
+                "interaction_id": "int_004",
+            },
+        )
         assert res.status_code == 422
 
 
@@ -641,13 +795,16 @@ class TestReflectionLessons:
 
     def test_get_lessons_after_analysis(self, client: TestClient):
         # Analyze some interactions with potential issues
-        client.post("/api/reflection/analyze", json={
-            "interaction_id": "int_010",
-            "conversation": [
-                {"role": "user", "content": "Call the API"},
-                {"role": "assistant", "content": "API timeout error"},
-            ],
-        })
+        client.post(
+            "/api/reflection/analyze",
+            json={
+                "interaction_id": "int_010",
+                "conversation": [
+                    {"role": "user", "content": "Call the API"},
+                    {"role": "assistant", "content": "API timeout error"},
+                ],
+            },
+        )
         res = client.get("/api/reflection/lessons")
         assert res.status_code == 200
         lessons = res.json()
@@ -658,13 +815,16 @@ class TestReflectionLessons:
 class TestReflectionResolve:
     def test_resolve_existing_lesson(self, client: TestClient):
         # Create a lesson
-        client.post("/api/reflection/analyze", json={
-            "interaction_id": "int_020",
-            "conversation": [
-                {"role": "user", "content": "Deploy with missing config"},
-                {"role": "assistant", "content": "Error: permission denied"},
-            ],
-        })
+        client.post(
+            "/api/reflection/analyze",
+            json={
+                "interaction_id": "int_020",
+                "conversation": [
+                    {"role": "user", "content": "Deploy with missing config"},
+                    {"role": "assistant", "content": "Error: permission denied"},
+                ],
+            },
+        )
         lessons = client.get("/api/reflection/lessons").json()
         if lessons:
             lesson_id = lessons[0]["id"]
@@ -691,12 +851,15 @@ class TestReflectionMistakes:
     def test_mistakes_after_failures(self, client: TestClient):
         # Trigger some failures
         for i in range(3):
-            client.post("/api/reflection/analyze", json={
-                "interaction_id": f"int_fail_{i}",
-                "conversation": [
-                    {"role": "user", "content": f"Attempt {i}"},
-                    {"role": "assistant", "content": "Failed with error and timeout"},
-                ],
-            })
+            client.post(
+                "/api/reflection/analyze",
+                json={
+                    "interaction_id": f"int_fail_{i}",
+                    "conversation": [
+                        {"role": "user", "content": f"Attempt {i}"},
+                        {"role": "assistant", "content": "Failed with error and timeout"},
+                    ],
+                },
+            )
         res = client.get("/api/reflection/mistakes")
         assert res.status_code == 200

@@ -6,7 +6,6 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 
 @dataclass
@@ -38,7 +37,7 @@ class EpisodicMemory:
     def _load(self) -> None:
         """Load entries from JSON file."""
         try:
-            with open(self.storage_path, "r") as f:
+            with open(self.storage_path) as f:
                 data = json.load(f)
             for item in data:
                 entry = EpisodicEntry(
@@ -59,18 +58,22 @@ class EpisodicMemory:
             return
         data = []
         for entry in self._entries.values():
-            data.append({
-                "id": entry.id,
-                "timestamp": entry.timestamp.isoformat(),
-                "content": entry.content,
-                "importance": entry.importance,
-                "embedding": entry.embedding,
-                "tags": entry.tags,
-            })
+            data.append(
+                {
+                    "id": entry.id,
+                    "timestamp": entry.timestamp.isoformat(),
+                    "content": entry.content,
+                    "importance": entry.importance,
+                    "embedding": entry.embedding,
+                    "tags": entry.tags,
+                }
+            )
         with open(self.storage_path, "w") as f:
             json.dump(data, f)
 
-    def add(self, content: str, importance: float = 0.5, tags: list[str] | None = None) -> EpisodicEntry:
+    def add(
+        self, content: str, importance: float = 0.5, tags: list[str] | None = None
+    ) -> EpisodicEntry:
         """Add an episodic memory entry."""
         entry = EpisodicEntry(
             id=f"ep_{datetime.now(timezone.utc).timestamp()}",

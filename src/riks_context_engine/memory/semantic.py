@@ -40,7 +40,8 @@ class SemanticMemory:
             self._conn = None
         else:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            self._conn.execute("""
+            self._conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS semantic_entries (
                 id TEXT PRIMARY KEY,
                 subject TEXT NOT NULL,
@@ -51,7 +52,8 @@ class SemanticMemory:
                 last_accessed TEXT NOT NULL,
                 access_count INTEGER NOT NULL DEFAULT 0
             )
-        """)
+        """
+            )
             self._conn.commit()
             self._load()
 
@@ -143,7 +145,9 @@ class SemanticMemory:
             return True
         return False
 
-    def query(self, subject: str | None = None, predicate: str | None = None) -> list[SemanticEntry]:
+    def query(
+        self, subject: str | None = None, predicate: str | None = None
+    ) -> list[SemanticEntry]:
         """Query semantic memory by subject and/or predicate."""
         results = []
         for entry in self._entries.values():
@@ -161,8 +165,10 @@ class SemanticMemory:
         query_lower = query.lower()
         results = []
         for entry in self._entries.values():
-            if (query_lower in entry.subject.lower() or
-                query_lower in entry.predicate.lower() or
-                (entry.object and query_lower in entry.object.lower())):
+            if (
+                query_lower in entry.subject.lower()
+                or query_lower in entry.predicate.lower()
+                or (entry.object and query_lower in entry.object.lower())
+            ):
                 results.append(entry)
         return results

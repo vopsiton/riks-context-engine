@@ -6,7 +6,6 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 
 @dataclass
@@ -40,7 +39,7 @@ class ProceduralMemory:
     def _load(self) -> None:
         """Load procedures from JSON file."""
         try:
-            with open(self.storage_path, "r") as f:
+            with open(self.storage_path) as f:
                 data = json.load(f)
             for item in data:
                 proc = Procedure(
@@ -63,16 +62,18 @@ class ProceduralMemory:
             return
         data = []
         for proc in self._procedures.values():
-            data.append({
-                "id": proc.id,
-                "name": proc.name,
-                "description": proc.description,
-                "steps": proc.steps,
-                "created_at": proc.created_at.isoformat(),
-                "last_used": proc.last_used.isoformat(),
-                "use_count": proc.use_count,
-                "success_rate": proc.success_rate,
-            })
+            data.append(
+                {
+                    "id": proc.id,
+                    "name": proc.name,
+                    "description": proc.description,
+                    "steps": proc.steps,
+                    "created_at": proc.created_at.isoformat(),
+                    "last_used": proc.last_used.isoformat(),
+                    "use_count": proc.use_count,
+                    "success_rate": proc.success_rate,
+                }
+            )
         with open(self.storage_path, "w") as f:
             json.dump(data, f)
 
@@ -110,7 +111,6 @@ class ProceduralMemory:
         query_lower = query.lower()
         results = []
         for proc in self._procedures.values():
-            if (query_lower in proc.name.lower() or
-                query_lower in proc.description.lower()):
+            if query_lower in proc.name.lower() or query_lower in proc.description.lower():
                 results.append(proc)
         return results
