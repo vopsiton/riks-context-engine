@@ -32,7 +32,7 @@ class Task:
     parallel_group: Optional[str] = None  # Tasks in same group can run in parallel
     success_criteria: Optional[str] = None
     rollback_steps: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     retry_count: int = 0
 
@@ -57,7 +57,7 @@ class TaskGraph:
 
     goal: str
     tasks: list[Task] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def get_task(self, task_id: str) -> Optional[Task]:
         """Get task by ID."""
@@ -226,13 +226,16 @@ class TaskDecomposer:
         plan = self.plan_execution(graph)
 
         for batch in plan:
-            if isinstance(batch[0], list):
-                # Parallel execution batch
+            # batch is list[Task] (sequential) or list[list[Task]] (parallel batches)
+            if batch and isinstance(batch[0], list):
+                # Parallel: batch is list of task lists [[task1, task2], ...]
+                for task_list in batch:
+                    for task in task_list:
+                        task.mark_running()
+            else:
+                # Sequential: batch is list of Tasks [task1, task2, ...]
                 for task in batch:
                     task.mark_running()
-            else:
-                # Sequential
-                batch.mark_running()
 
         # In a real implementation, this would run tasks
         # For now, just mark as done
