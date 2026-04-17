@@ -1,10 +1,9 @@
 """Task decomposition - goal → executable steps."""
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
-from typing import Optional
 import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
 
 
 class TaskStatus(Enum):
@@ -29,16 +28,16 @@ class Task:
     description: str
     status: TaskStatus = TaskStatus.PENDING
     dependencies: list[str] = field(default_factory=list)
-    parallel_group: Optional[str] = None  # Tasks in same group can run in parallel
-    success_criteria: Optional[str] = None
+    parallel_group: str | None = None  # Tasks in same group can run in parallel
+    success_criteria: str | None = None
     rollback_steps: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    completed_at: Optional[datetime] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: datetime | None = None
     retry_count: int = 0
 
     def mark_done(self):
         self.status = TaskStatus.DONE
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
 
     def mark_failed(self):
         self.status = TaskStatus.FAILED
@@ -57,9 +56,9 @@ class TaskGraph:
 
     goal: str
     tasks: list[Task] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def get_task(self, task_id: str) -> Optional[Task]:
+    def get_task(self, task_id: str) -> Task | None:
         """Get task by ID."""
         for task in self.tasks:
             if task.id == task_id:
@@ -98,7 +97,7 @@ DECOMPOSE_PATTERNS = [
 
 def infer_dependencies(tasks: list[Task]) -> list[Task]:
     """Infer task dependencies based on type and order."""
-    type_order = {
+    _type_order: dict[str, int] = {
         "Setup and Configuration": 0,
         "Build and Creation": 1,
         "Testing and Verification": 2,
@@ -117,7 +116,7 @@ def infer_dependencies(tasks: list[Task]) -> list[Task]:
     for tasks_in_cat in task_types.values():
         for i in range(1, len(tasks_in_cat)):
             # Add dependency on previous task in same category
-            prev_id = tasks_in_cat[i-1].id
+            prev_id = tasks_in_cat[i - 1].id
             if prev_id not in tasks_in_cat[i].dependencies:
                 tasks_in_cat[i].dependencies.append(prev_id)
 
@@ -151,9 +150,9 @@ class TaskDecomposer:
         # Check for common goal patterns
         if "and" in goal_lower or "," in goal_lower:
             # Split by common delimiters
-            parts = re.split(r',\s*(?:and\s+)?|\s+and\s+', goal)
+            parts = re.split(r",\s*(?:and\s+)?|\s+and\s+", goal)
             for i, part in enumerate(parts):
-                part = part.strip().strip('.')
+                part = part.strip().strip(".")
                 if len(part) > 3:
                     task = self._create_task(part, i)
                     tasks.append(task)
@@ -226,13 +225,16 @@ class TaskDecomposer:
         plan = self.plan_execution(graph)
 
         for batch in plan:
-            if isinstance(batch[0], list):
-                # Parallel execution batch
+            # batch is list[Task] (sequential) or list[list[Task]] (parallel batches)
+            if batch and isinstance(batch[0], list):
+                # Parallel: batch is list of task lists [[task1, task2], ...]
+                for task_list in batch:
+                    for task in task_list:
+                        task.mark_running()
+            else:
+                # Sequential: batch is list of Tasks [task1, task2, ...]
                 for task in batch:
                     task.mark_running()
-            else:
-                # Sequential
-                batch.mark_running()
 
         # In a real implementation, this would run tasks
         # For now, just mark as done
@@ -242,7 +244,7 @@ class TaskDecomposer:
 
         return graph
 
-    def validate_graph(self, graph: TaskGraph) -> tuple[bool, Optional[str]]:
+    def validate_graph(self, graph: TaskGraph) -> tuple[bool, str | None]:
         """Validate task graph for cycles and missing dependencies."""
         # Check for cycles using DFS
         visited = set()

@@ -1,9 +1,8 @@
 """Self-reflection analyzer - learn from mistakes and successes."""
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
-import re
 
 
 @dataclass
@@ -36,24 +35,43 @@ class ReflectionReport:
 # Category detection patterns
 CATEGORY_PATTERNS = {
     "tool-use": [
-        r"tool.*fail", r"function.*error", r"api.*",
-        r"missing.*parameter", r"invalid.*argument", r"permission.*denied"
+        r"tool.*fail",
+        r"function.*error",
+        r"api.*",
+        r"missing.*parameter",
+        r"invalid.*argument",
+        r"permission.*denied",
     ],
     "context-management": [
-        r"context.*overflow", r"token.*limit", r"memory.*full",
-        r"forgot.*prefer", r"lost.*track", r"prune.*error"
+        r"context.*overflow",
+        r"token.*limit",
+        r"memory.*full",
+        r"forgot.*prefer",
+        r"lost.*track",
+        r"prune.*error",
     ],
     "task-planning": [
-        r"wrong.*order", r"missed.*step", r"assumed.*wrong",
-        r"dependency.*broken", r"unexpected.*blocker", r"incomplete.*goal"
+        r"wrong.*order",
+        r"missed.*step",
+        r"assumed.*wrong",
+        r"dependency.*broken",
+        r"unexpected.*blocker",
+        r"incomplete.*goal",
     ],
     "communication": [
-        r"unclear.*request", r"misunderstood.*intent",
-        r"gave.*wrong.*info", r"confusing.*response"
+        r"unclear.*request",
+        r"misunderstood.*intent",
+        r"gave.*wrong.*info",
+        r"confusing.*response",
     ],
     "security": [
-        r"injection", r"exposure", r"unauthorized", r"data.*leak",
-        r"credential.*exposed", r"validation.*fail", r"vulnerability"
+        r"injection",
+        r"exposure",
+        r"unauthorized",
+        r"data.*leak",
+        r"credential.*exposed",
+        r"validation.*fail",
+        r"vulnerability",
     ],
 }
 
@@ -102,21 +120,32 @@ class ReflectionAnalyzer:
         # Simple pattern-based analysis
         for msg in conversation:
             content = msg.get("content", "")
-            role = msg.get("role", "")
+            _role = msg.get("role", "")
 
             # Look for success indicators
-            if any(kw in content.lower() for kw in ["success", "works", "solved", "fixed", "great"]):
+            if any(
+                kw in content.lower() for kw in ["success", "works", "solved", "fixed", "great"]
+            ):
                 went_well.append(content[:200])
 
             # Look for failure indicators
-            has_error = any(kw in content.lower() for kw in ["error", "fail", "wrong", "bug", "issue", "problem"])
-            has_api = any(kw in content.lower() for kw in ["timeout", "api", "http", "request", "endpoint"])
-            
+            has_error = any(
+                kw in content.lower()
+                for kw in ["error", "fail", "wrong", "bug", "issue", "problem"]
+            )
+            has_api = any(
+                kw in content.lower() for kw in ["timeout", "api", "http", "request", "endpoint"]
+            )
+
             if has_error or has_api:
                 went_wrong.append(content[:200])
 
             # Look for missing info patterns
-            if "didn't know" in content.lower() or "missing" in content.lower() or "unclear" in content.lower():
+            if (
+                "didn't know" in content.lower()
+                or "missing" in content.lower()
+                or "unclear" in content.lower()
+            ):
                 missing_info.append(content[:200])
 
         # Extract lessons from what went wrong
@@ -190,10 +219,14 @@ class ReflectionAnalyzer:
         if self.semantic_memory:
             self.semantic_memory.store(
                 key=f"success:{task_id}",
-                value={"task_id": task_id, "details": details, "timestamp": datetime.now(timezone.utc).isoformat()}
+                value={
+                    "task_id": task_id,
+                    "details": details,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             )
 
-    def record_failure(self, task_id: str, error: str, root_cause: Optional[str] = None) -> None:
+    def record_failure(self, task_id: str, error: str, root_cause: str | None = None) -> None:
         """Record a failed task."""
         categories = detect_category(error)
         severity = extract_severity(error)
@@ -215,7 +248,7 @@ class ReflectionAnalyzer:
 
     def get_active_lessons(self) -> list[Lesson]:
         """Get all unresolved lessons."""
-        return [l for l in self._lessons.values() if not l.resolved]
+        return [item for item in self._lessons.values() if not item.resolved]
 
     def resolve_lesson(self, lesson_id: str) -> bool:
         """Mark a lesson as resolved."""
