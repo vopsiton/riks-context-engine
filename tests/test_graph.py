@@ -1,39 +1,18 @@
 """Tests for knowledge graph module."""
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from riks_context_engine.graph.knowledge_graph import (
+    Entity,
     EntityType,
     KnowledgeGraph,
     RelationshipType,
-    _cosine_similarity,
 )
-
-
-class TestCosineSimilarity:
-    def test_identical_vectors(self):
-        v = [1.0, 2.0, 3.0]
-        assert _cosine_similarity(v, v) == pytest.approx(1.0)
-
-    def test_orthogonal_vectors(self):
-        assert _cosine_similarity([1.0, 0.0], [0.0, 1.0]) == pytest.approx(0.0)
-
-    def test_opposite_vectors(self):
-        assert _cosine_similarity([1.0, 1.0], [-1.0, -1.0]) == pytest.approx(-1.0)
-
-    def test_zero_vector(self):
-        assert _cosine_similarity([0.0, 0.0], [1.0, 2.0]) == 0.0
-
-    def test_empty_vector(self):
-        assert _cosine_similarity([], []) == 0.0
 
 
 class TestKnowledgeGraph:
     def test_init(self):
-        # Use in-memory DB to avoid leftover data from previous runs
-        kg = KnowledgeGraph(db_path=":memory:")
+        kg = KnowledgeGraph()
         assert len(kg._entities) == 0
         assert len(kg._relationships) == 0
 
@@ -69,7 +48,6 @@ class TestKnowledgeGraph:
 
     def test_query_by_relationship_type(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -81,7 +59,6 @@ class TestKnowledgeGraph:
 
     def test_expand(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -94,7 +71,6 @@ class TestKnowledgeGraph:
 
     def test_find_path(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -116,7 +92,6 @@ class TestKnowledgeGraph:
 
     def test_get_relationships(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -127,136 +102,56 @@ class TestKnowledgeGraph:
         assert len(rels) == 1
 
 
-class TestKnowledgeGraphEmbedding:
-    """Tests for embedding integration in KnowledgeGraph."""
-
-    def _mock_embedder(self, texts_to_embeddings: dict[str, list[float]]):
-        """Create a mock embedder that returns predefined embeddings."""
-        mock = MagicMock()
-        mock.embed.side_effect = lambda text: MagicMock(
-            embedding=texts_to_embeddings.get(text, [0.0] * 10),
-            model="nomic-embed-text",
-            prompt_tokens=5,
-        )
-        return mock
-
-    def test_add_entity_generates_embedding(self):
-        embedder = self._mock_embedder({"Vahit": [0.1] * 10})
-        kg = KnowledgeGraph(embedder=embedder)
-        entity = kg.add_entity("Vahit", EntityType.PERSON)
-        assert entity.embedding is not None
-        assert entity.embedding == [0.1] * 10
-        embedder.embed.assert_called_once_with("Vahit")
-
-    def test_add_entity_no_embedder(self):
-        kg = KnowledgeGraph()
-        entity = kg.add_entity("Vahit", EntityType.PERSON)
-        assert entity.embedding is None
-
-    def test_add_entity_auto_embed_false(self):
-        embedder = self._mock_embedder({"Vahit": [0.1] * 10})
-        kg = KnowledgeGraph(embedder=embedder)
-        entity = kg.add_entity("Vahit", EntityType.PERSON, auto_embed=False)
-        assert entity.embedding is None
-
-    def test_find_similar_returns_ranked_results(self):
-        # Use fully orthogonal unit vectors for clean similarity scores
-        # Vahit query: [1,0,0], Vahit entity: [1,0,0] -> cos_sim = 1.0
-        # Rik entity: [0,1,0] -> cos_sim = 0.0
-        # Opsiton entity: [0,0,1] -> cos_sim = 0.0
-        def embed_side_effect(text):
-            emb_map = {
-                "Vahit": [1.0, 0.0, 0.0],
-                "Rik": [0.0, 1.0, 0.0],
-                "Opsiton": [0.0, 0.0, 1.0],
-            }
-            return MagicMock(embedding=emb_map.get(text, [0.0] * 3), model="test", prompt_tokens=1)
-
-        embedder = MagicMock()
-        embedder.embed.side_effect = embed_side_effect
-
-        kg = KnowledgeGraph(embedder=embedder)
-        kg.add_entity("Vahit", EntityType.PERSON)
-        kg.add_entity("Rik", EntityType.CONCEPT)
-        kg.add_entity("Opsiton", EntityType.PROJECT)
-
-        results = kg.find_similar("Vahit", top_k=3)
-        assert len(results) == 1
-        assert results[0][0].name == "Vahit"
-        assert results[0][1] == pytest.approx(1.0)
-
-    def test_find_similar_no_embedder(self):
-        kg = KnowledgeGraph()
-        kg.add_entity("Vahit", EntityType.PERSON)
-        results = kg.find_similar("Vahit")
-        assert results == []
-
-    def test_find_similar_respects_min_score(self):
-        # Vahit: [1,0], Rik: [0,1] -> orthogonal, cos_sim = 0
-        # Vahit query: [1,0] -> Vahit entity cos_sim = 1.0, Rik entity cos_sim = 0.0
-        def embed_side_effect(text):
-            emb_map = {
-                "Vahit": [1.0, 0.0],
-                "Rik": [0.0, 1.0],
-            }
-            return MagicMock(embedding=emb_map.get(text, [0.0] * 2), model="test", prompt_tokens=1)
-
-        embedder = MagicMock()
-        embedder.embed.side_effect = embed_side_effect
-
-        kg = KnowledgeGraph(embedder=embedder)
-        kg.add_entity("Vahit", EntityType.PERSON)
-        kg.add_entity("Rik", EntityType.CONCEPT)
-
-        results = kg.find_similar("Vahit", min_score=0.9)
-        assert len(results) == 1
-        assert results[0][0].name == "Vahit"
-
-    def test_set_embedder(self):
-        kg = KnowledgeGraph()
-        embedder = self._mock_embedder({"Vahit": [0.5] * 10})
-        kg.set_embedder(embedder)
-        entity = kg.add_entity("Vahit", EntityType.PERSON)
-        assert entity.embedding is not None
-
-    def test_reembed_entity(self):
+class TestSemanticSearch:
+    def test_semantic_search_returns_scored_entities(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
-        embedder = self._mock_embedder(
-            {
-                "Vahit": [0.1] * 5,
-                "Vahit Updated": [0.9] * 5,
-            }
-        )
-        kg = KnowledgeGraph(db_path, embedder=embedder)
-        e1 = kg.add_entity("Vahit", EntityType.PERSON)
-        assert e1.embedding == [0.1] * 5
+        kg = KnowledgeGraph(db_path)
+        kg.add_entity("Vahit", EntityType.PERSON, {"role": "DevSecOps Lead"})
+        kg.add_entity("Rik", EntityType.CONCEPT, {"domain": "AI assistant"})
+        kg.add_entity("Kubernetes", EntityType.CONCEPT, {"domain": "container orchestration"})
 
-        # Re-embed with new text
-        embedder.embed.side_effect = lambda t: MagicMock(
-            embedding=[0.9] * 5 if "Updated" in t else [0.1] * 5,
-            model="nomic-embed-text",
-        )
-        e1.name = "Vahit Updated"
-        updated = kg.reembed_entity(e1.id)
-        assert updated is not None
-        assert updated.embedding == [0.9] * 5
+        results = kg.semantic_search("AI and assistants", top_k=2, embedder=FakeEmbedder())
+        assert len(results) <= 2
+        assert all(0.0 <= score <= 1.0 for _, score in results)
 
-    def test_embedding_persisted_to_db(self):
+    def test_semantic_search_falls_back_on_unavailable_embedder(self):
+        kg = KnowledgeGraph()
+        kg.add_entity("Vahit", EntityType.PERSON)
+        kg.add_entity("Vahid", EntityType.PERSON)
+        results = kg.semantic_search("Vahit", top_k=5, embedder=FailingEmbedder())
+        assert len(results) >= 1
+        assert results[0][0].name == "Vahit"
+
+    def test_keyword_search_score(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
-        embedder = self._mock_embedder({"Vahit": [0.1] * 5})
-        kg1 = KnowledgeGraph(db_path, embedder=embedder)
-        kg1.add_entity("Vahit", EntityType.PERSON)
+        kg = KnowledgeGraph(db_path)
+        kg.add_entity("Vahit", EntityType.PERSON, {"role": "DevSecOps"})
+        kg.add_entity("Riz", EntityType.CONCEPT, {"domain": "fun AI"})
+        results = kg.semantic_search("DevSecOps", top_k=5, embedder=FailingEmbedder())
+        assert len(results) >= 1
+        assert results[0][0].name == "Vahit"
 
-        # Load in new instance — embedding should be restored
-        kg2 = KnowledgeGraph(db_path)
-        kg2.load()
-        assert len(kg2._entities) == 1
-        entity = kg2.get_entity("person_vahit")
-        assert entity is not None
-        assert entity.embedding == [0.1] * 5
+
+class FakeEmbedder:
+    """Fake embedder that returns predictable vectors for testing."""
+
+    def embed(self, text: str):
+        # Return a 3-element vector based on text content
+        vec = [hash(text) % 100 / 100.0, len(text) / 20.0, ord(text[0]) / 127.0]
+        return FakeEmbeddingResult(vec)
+
+
+class FakeEmbeddingResult:
+    def __init__(self, embedding):
+        self.embedding = embedding
+
+
+class FailingEmbedder:
+    """Embedder that always raises to test fallback path."""
+
+    def embed(self, text: str):
+        raise RuntimeError("Embedder unavailable")

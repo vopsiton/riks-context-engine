@@ -1,5 +1,5 @@
 """Intelligent context window management with pruning."""
 
-from .manager import ContextWindowManager
+from .manager import ContextWindowManager, ImportanceScorer
 
-__all__ = ["ContextWindowManager"]
+__all__ = ["ContextWindowManager", "ImportanceScorer"]

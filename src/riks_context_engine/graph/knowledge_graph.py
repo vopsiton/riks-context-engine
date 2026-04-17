@@ -1,17 +1,32 @@
-"""Knowledge graph - entities and their relationships."""
-
-from __future__ import annotations
+"""Knowledge graph - entities and their relationships with semantic search."""
 
 import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from math import sqrt
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, Protocol
 
-if TYPE_CHECKING:
-    from riks_context_engine.memory.embedding import OllamaEmbedder
+
+from riks_context_engine.memory.embedding import OllamaEmbedder, get_embedder
+
+
+class EmbedderProtocol(Protocol):
+    """Protocol for embedding services."""
+
+    def embed(self, text: str) -> Any: ...
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sqrt(sum(x * x for x in a))
+    norm_b = sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 class EntityType(Enum):
@@ -40,9 +55,8 @@ class Entity:
     name: str
     entity_type: EntityType
     properties: dict = field(default_factory=dict)
-    embedding: list[float] | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = datetime.now(timezone.utc)
+    last_updated: datetime = datetime.now(timezone.utc)
 
 
 @dataclass
@@ -55,7 +69,7 @@ class Relationship:
     relationship_type: RelationshipType
     properties: dict = field(default_factory=dict)
     confidence: float = 1.0
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = datetime.now(timezone.utc)
 
 
 class KnowledgeGraph:
@@ -66,34 +80,22 @@ class KnowledgeGraph:
     and relationship traversal.
     """
 
-    def __init__(
-        self,
-        db_path: str | None = None,
-        embedder: OllamaEmbedder | None = None,
-    ):
+    def __init__(self, db_path: str | None = None):
         self.db_path = db_path or "data/knowledge_graph.db"
         self._entities: dict[str, Entity] = {}
         self._relationships: dict[str, Relationship] = {}
-        self._embedder = embedder
-        self._is_memory = self.db_path == ":memory:"
         self._init_db()
-        if not self._is_memory:
-            self.load()
 
     def _init_db(self) -> None:
         """Initialize SQLite database for persistence."""
-        if self._is_memory:
-            return
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
-        conn.executescript(
-            """
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS entities (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 entity_type TEXT NOT NULL,
                 properties TEXT NOT NULL DEFAULT '{}',
-                embedding TEXT,
                 created_at TEXT NOT NULL,
                 last_updated TEXT NOT NULL
             );
@@ -111,19 +113,11 @@ class KnowledgeGraph:
             CREATE INDEX IF NOT EXISTS idx_rels_from ON relationships(from_entity_id);
             CREATE INDEX IF NOT EXISTS idx_rels_to ON relationships(to_entity_id);
             CREATE INDEX IF NOT EXISTS idx_rels_type ON relationships(relationship_type);
-        """
-        )
-        # Add embedding column to existing tables (idempotent migration)
-        try:
-            conn.execute("ALTER TABLE entities ADD COLUMN embedding TEXT")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        """)
         conn.close()
 
     def load(self) -> None:
         """Load entities and relationships from SQLite (call after init)."""
-        if self._is_memory:
-            return  # In-memory: data is already in-memory, skip DB load
         self._load_from_db()
 
     def _load_from_db(self) -> None:
@@ -133,15 +127,11 @@ class KnowledgeGraph:
         cur = conn.cursor()
 
         for row in cur.execute("SELECT * FROM entities"):
-            embedding: list[float] | None = None
-            if row["embedding"]:
-                embedding = json.loads(row["embedding"])
             entity = Entity(
                 id=row["id"],
                 name=row["name"],
                 entity_type=EntityType(row["entity_type"]),
                 properties=json.loads(row["properties"]),
-                embedding=embedding,
                 created_at=datetime.fromisoformat(row["created_at"]),
                 last_updated=datetime.fromisoformat(row["last_updated"]),
             )
@@ -161,85 +151,32 @@ class KnowledgeGraph:
 
         conn.close()
 
-    def set_embedder(self, embedder: OllamaEmbedder) -> None:
-        """Set or replace the embedder used for semantic search."""
-        self._embedder = embedder
-
-    def reembed_entity(self, entity_id: str) -> Entity | None:
-        """Re-generate and persist embedding for an existing entity.
-
-        Useful when the embedder model changes or entity content is updated.
-
-        Args:
-            entity_id: ID of the entity to re-embed
-
-        Returns:
-            Updated Entity or None if not found or embedder not set
-        """
-        entity = self._entities.get(entity_id)
-        if entity is None or self._embedder is None:
-            return None
-
-        try:
-            result = self._embedder.embed(entity.name)
-            entity.embedding = result.embedding
-            entity.last_updated = datetime.now(timezone.utc)
-            self._save_entity_to_db(entity)
-        except Exception:
-            pass
-        return entity
-
-    def add_entity(
-        self,
-        name: str,
-        entity_type: EntityType,
-        properties: dict | None = None,
-        auto_embed: bool = True,
-    ) -> Entity:
-        """Add an entity to the graph.
-
-        Args:
-            name: Entity name
-            entity_type: Type of entity
-            properties: Optional extra properties
-            auto_embed: If True and embedder is configured, generate embedding automatically
-        """
+    def add_entity(self, name: str, entity_type: EntityType, properties: dict | None = None) -> Entity:
+        """Add an entity to the graph."""
         entity = Entity(
             id=f"{entity_type.value}_{name.lower().replace(' ', '_')}",
             name=name,
             entity_type=entity_type,
             properties=properties or {},
         )
-
-        # Generate embedding if embedder is configured
-        if auto_embed and self._embedder is not None:
-            try:
-                result = self._embedder.embed(name)
-                entity.embedding = result.embedding
-            except Exception:
-                pass  # Embedding failure is non-fatal
-
         self._entities[entity.id] = entity
         self._save_entity_to_db(entity)
         return entity
 
     def _save_entity_to_db(self, entity: Entity) -> None:
         """Persist entity to SQLite."""
-        if self._is_memory:
-            return
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT OR REPLACE INTO entities (id, name, entity_type, properties, embedding, created_at, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO entities (id, name, entity_type, properties, created_at, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 entity.id,
                 entity.name,
                 entity.entity_type.value,
                 json.dumps(entity.properties),
-                json.dumps(entity.embedding) if entity.embedding is not None else None,
                 entity.created_at.isoformat(),
                 entity.last_updated.isoformat(),
             ),
@@ -268,8 +205,6 @@ class KnowledgeGraph:
 
     def _save_rel_to_db(self, rel: Relationship) -> None:
         """Persist relationship to SQLite."""
-        if self._is_memory:
-            return
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute(
@@ -290,9 +225,7 @@ class KnowledgeGraph:
         conn.commit()
         conn.close()
 
-    def query(
-        self, entity_name: str | None = None, relationship_type: RelationshipType | None = None
-    ) -> list[Entity | Relationship]:
+    def query(self, entity_name: str | None = None, relationship_type: RelationshipType | None = None) -> list[Entity | Relationship]:
         """Query the knowledge graph by entity name or relationship type.
 
         Args:
@@ -334,6 +267,7 @@ class KnowledgeGraph:
         if entity_id not in self._entities:
             return []
 
+
         results: list[tuple[Entity, Relationship]] = []
         visited: set[str] = {entity_id}
         queue: list[tuple[str, int]] = [(entity_id, 0)]
@@ -371,10 +305,9 @@ class KnowledgeGraph:
             if rel.from_entity_id == entity_id or rel.to_entity_id == entity_id
         ]
 
-    def find_path(
-        self, from_entity_id: str, to_entity_id: str, max_depth: int = 3
-    ) -> list[Relationship] | None:
+    def find_path(self, from_entity_id: str, to_entity_id: str, max_depth: int = 3) -> list[Relationship] | None:
         """Find a path between two entities using BFS.
+
 
         Args:
             from_entity_id: Start entity ID
@@ -413,53 +346,84 @@ class KnowledgeGraph:
 
         return None
 
-    def find_similar(
-        self,
-        text: str,
-        top_k: int = 5,
-        min_score: float = 0.5,
-    ) -> list[tuple[Entity, float]]:
-        """Find entities most similar to a text query using cosine similarity.
+    # ── Semantic Search ────────────────────────────────────────────────────
 
-        Requires an embedder to be configured. Entities without embeddings
-        are skipped.
+    def semantic_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        embedder: EmbedderProtocol | None = None,
+        score_threshold: float = 0.0,
+    ) -> list[tuple[Entity, float]]:
+        """Find entities most similar to a natural language query.
 
         Args:
-            text: Query text to compare against entity embeddings
+            query: Natural language search phrase
             top_k: Maximum number of results to return
-            min_score: Minimum cosine similarity threshold (0.0-1.0)
+            embedder: Embedding service (defaults to OllamaEmbedder)
+            score_threshold: Minimum cosine similarity score (0.0–1.0)
 
         Returns:
-            List of (entity, similarity_score) tuples, sorted by score descending
+            List of (entity, similarity_score) tuples, sorted descending
         """
-        if self._embedder is None:
+        if not self._entities:
             return []
+
+
+        emb_service = embedder or get_embedder()
 
         try:
-            query_result = self._embedder.embed(text)
-            query_emb = query_result.embedding
+            query_emb = emb_service.embed(query)
+            if hasattr(query_emb, "embedding"):
+                query_vec = query_emb.embedding
+            else:
+                query_vec = query_emb  # fallback for raw list responses
         except Exception:
-            return []
+            # If embedding service unavailable, fall back to keyword match
+            return self._keyword_search(query, top_k)
 
+        scored: list[tuple[Entity, float]] = []
+        for entity in self._entities.values():
+            entity_vec = self._get_entity_embedding(entity)
+            if entity_vec is not None:
+                score = _cosine_similarity(query_vec, entity_vec)
+                if score >= score_threshold:
+                    scored.append((entity, score))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored[:top_k]
+
+    def _get_entity_embedding(self, entity: Entity) -> list[float] | None:
+        """Get cached embedding vector for an entity, computing if needed."""
+        cache_key = f"_emb_{entity.id}"
+        if hasattr(self, cache_key):
+            return getattr(self, cache_key)
+
+        # Build descriptive text from entity properties
+        parts = [entity.name]
+        parts.append(entity.entity_type.value)
+        parts.extend(f"{k}={v}" for k, v in entity.properties.items())
+        text = ", ".join(parts)
+
+        try:
+            result = get_embedder().embed(text)
+            vec = result.embedding if hasattr(result, "embedding") else result
+            setattr(self, cache_key, vec)
+            return vec
+        except Exception:
+            return None
+
+    def _keyword_search(self, query: str, top_k: int) -> list[tuple[Entity, float]]:
+        """Fuzzy fallback when semantic search is unavailable."""
+        q = query.lower()
         results: list[tuple[Entity, float]] = []
         for entity in self._entities.values():
-            if entity.embedding is None:
-                continue
-            score = _cosine_similarity(query_emb, entity.embedding)
-            if score >= min_score:
+            score = 0.0
+            if q in entity.name.lower():
+                score = 1.0
+            elif any(q in str(v).lower() for v in entity.properties.values()):
+                score = 0.5
+            if score > 0:
                 results.append((entity, score))
-
         results.sort(key=lambda x: x[1], reverse=True)
         return results[:top_k]
-
-
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    if len(a) != len(b) or not a:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(x * x for x in b) ** 0.5
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)

@@ -1,47 +1,33 @@
+# ===== Base ===== #
 FROM python:3.12-slim
+
+LABEL maintainer="vopsiton <vahit@opsiton.com>"
+LABEL description="Rik's Context Engine - AI memory and context management"
 
 WORKDIR /app
 
-# Install system dependencies
+# ===== Dependencies ===== #
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     curl \
-    gcc \
-    libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY pyproject.toml ./
-
-# Copy application code BEFORE installing the package
+# Copy app source (needed for editable install)
 COPY src/ ./src/
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -e ".[dev]"
-
-# Copy tests
 COPY tests/ ./tests/
 
-# Create data directory
-RUN mkdir -p /app/data
+# Copy and install
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir -e ".[dev]"
 
-# Environment variables
-ENV PYTHONPATH=/app
+# ===== Data directory ===== #
+RUN mkdir -p /app/data && chmod 755 /app/data
+
+ENV PYTHONPATH=/app/src
 ENV DATA_DIR=/app/data
-ENV ENVIRONMENT=development
-ENV OLLAMA_BASE_URL=http://host.docker.internal:11434
 
-# Create non-root user
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
-
-# Switch to non-root user
-USER appuser
-
-# Expose default port
+# Default port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Start uvicorn FastAPI server
-CMD ["uvicorn", "riks_context_engine.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command - interactive shell
+CMD ["python", "-c", "print('Rik\\'s Context Engine ready!')"]

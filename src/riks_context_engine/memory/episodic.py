@@ -1,11 +1,9 @@
 """Episodic memory - session-level, short-term observations."""
 
-from __future__ import annotations
-
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -18,6 +16,8 @@ class EpisodicEntry:
     importance: float  # 0.0 - 1.0
     embedding: list[float] | None = None
     tags: list[str] | None = None
+    access_count: int = 0
+    last_accessed: datetime | None = None
 
 
 class EpisodicMemory:
@@ -30,109 +30,113 @@ class EpisodicMemory:
     def __init__(self, storage_path: str | None = None):
         self.storage_path = storage_path or "data/episodic.json"
         self._entries: dict[str, EpisodicEntry] = {}
-        if storage_path != ":memory:":
-            Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
         self._load()
 
     def _load(self) -> None:
-        """Load entries from JSON file."""
-        if self.storage_path == ":memory:":
-            return
-        try:
-            with open(self.storage_path) as f:
-                data = json.load(f)
-            for item in data:
-                entry = EpisodicEntry(
-                    id=item["id"],
-                    timestamp=datetime.fromisoformat(item["timestamp"]),
-                    content=item["content"],
-                    importance=item.get("importance", 0.5),
-                    embedding=item.get("embedding"),
-                    tags=item.get("tags"),
-                )
-                self._entries[entry.id] = entry
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass  # Empty store on first run
+        """Load entries from disk if available."""
+        path = Path(self.storage_path)
+        if path.exists():
+            import json
+            try:
+                data = json.loads(path.read_text())
+                for d in data.values():
+                    ts = d["timestamp"]
+                    if isinstance(ts, str):
+                        ts = datetime.fromisoformat(ts)
+                    self._entries[d["id"]] = EpisodicEntry(
+                        id=d["id"],
+                        timestamp=ts,
+                        content=d["content"],
+                        importance=d.get("importance", 0.5),
+                        embedding=d.get("embedding"),
+                        tags=d.get("tags"),
+                    )
+            except (json.JSONDecodeError, KeyError, ValueError):
+                pass  # Start fresh on corruption
 
-    def _persist(self) -> None:
-        """Write entries to JSON file."""
-        if self.storage_path == ":memory:":
-            return
-        data = []
-        for entry in self._entries.values():
-            data.append(
-                {
-                    "id": entry.id,
-                    "timestamp": entry.timestamp.isoformat(),
-                    "content": entry.content,
-                    "importance": entry.importance,
-                    "embedding": entry.embedding,
-                    "tags": entry.tags,
-                }
-            )
-        with open(self.storage_path, "w") as f:
-            json.dump(data, f)
+    def _save(self) -> None:
+        """Persist entries to disk."""
+        Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
+        import json
+        data = {eid: {
+            "id": e.id,
+            "timestamp": e.timestamp.isoformat(),
+            "content": e.content,
+            "importance": e.importance,
+            "embedding": e.embedding,
+            "tags": e.tags,
+        } for eid, e in self._entries.items()}
+        Path(self.storage_path).write_text(json.dumps(data, indent=2))
 
     def add(
-        self, content: str, importance: float = 0.5, tags: list[str] | None = None
+        self,
+        content: str,
+        importance: float = 0.5,
+        tags: list[str] | None = None,
+        embedding: list[float] | None = None,
     ) -> EpisodicEntry:
         """Add an episodic memory entry."""
+        now = datetime.now(timezone.utc)
         entry = EpisodicEntry(
-            id=f"ep_{datetime.now(timezone.utc).timestamp()}",
-            timestamp=datetime.now(timezone.utc),
+            id=f"ep_{now.timestamp()}",
+            timestamp=now,
             content=content,
             importance=importance,
-            tags=tags,
+            tags=tags or [],
+            embedding=embedding,
         )
         self._entries[entry.id] = entry
-        self._persist()
+        self._save()
         return entry
 
     def get(self, entry_id: str) -> EpisodicEntry | None:
-        """Get an episodic entry by ID."""
-        return self._entries.get(entry_id)
+        """Get a single entry by ID, incrementing access count."""
+        entry = self._entries.get(entry_id)
+        if entry:
+            entry.access_count += 1  # type: ignore[attr-defined]
+            entry.last_accessed = datetime.now(timezone.utc)  # type: ignore[attr-defined]
+        return entry
+
+    @property
+    def entries(self) -> dict[str, EpisodicEntry]:
+        return self._entries
+
+    def query(self, query: str, limit: int = 10) -> list[EpisodicEntry]:
+        """Query episodic memory by keyword match."""
+        q = query.lower()
+        matches = [
+            e for e in self._entries.values()
+            if q in e.content.lower() or any(q in (t or "") for t in (e.tags or []))
+        ]
+        # Sort by importance desc, then timestamp desc
+        matches.sort(key=lambda e: (e.importance, e.timestamp.timestamp()), reverse=True)
+        return matches[:limit]
+
+    def prune(self, max_entries: int = 1000) -> int:
+        """Remove low-importance entries when limit is exceeded."""
+        if len(self._entries) <= max_entries:
+            return 0
+        # Sort by (importance asc, timestamp asc) - prune least important first
+        sorted_entries = sorted(
+            self._entries.items(),
+            key=lambda kv: (kv[1].importance, kv[1].timestamp.timestamp()),
+        )
+        removed = 0
+        while len(self._entries) > max_entries and sorted_entries:
+            entry_id, _ = sorted_entries.pop(0)
+            del self._entries[entry_id]
+            removed += 1
+        if removed:
+            self._save()
+        return removed
 
     def delete(self, entry_id: str) -> bool:
-        """Delete an episodic entry by ID."""
+        """Delete an entry by ID."""
         if entry_id in self._entries:
             del self._entries[entry_id]
-            self._persist()
+            self._save()
             return True
         return False
 
-    def query(self, query: str, limit: int = 10) -> list[EpisodicEntry]:
-        """Query episodic memory by content similarity (substring match)."""
-        query_lower = query.lower()
-        scored = []
-        for entry in self._entries.values():
-            if query_lower in entry.content.lower():
-                scored.append((entry.importance, entry.timestamp, entry))
-        # Sort by importance desc, then newest first
-        scored.sort(key=lambda x: (-x[0], -x[1].timestamp()))
-        return [entry for _, _, entry in scored[:limit]]
-
-    def prune(self, max_entries: int = 1000) -> int:
-        """Remove low-importance entries when limit is exceeded.
-
-        Returns the number of entries pruned.
-        """
-        if len(self._entries) <= max_entries:
-            return 0
-
-        # Sort by importance asc, then oldest first
-        entries_by_quality = sorted(
-            self._entries.values(),
-            key=lambda e: (e.importance, e.timestamp),
-        )
-
-        # Remove lowest-importance entries until under limit
-        pruned = 0
-        to_remove = len(self._entries) - max_entries
-        for entry in entries_by_quality:
-            if pruned >= to_remove:
-                break
-            del self._entries[entry.id]
-            pruned += 1
-
-        self._persist()
-        return pruned
+    def __len__(self) -> int:
+        return len(self._entries)

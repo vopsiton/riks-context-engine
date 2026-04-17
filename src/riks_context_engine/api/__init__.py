@@ -1,4 +1,4 @@
-"""Rik's Context Engine - FastAPI API Server."""
+"""HTTP API server for Rik's Context Engine."""
 
 from .server import app
 
