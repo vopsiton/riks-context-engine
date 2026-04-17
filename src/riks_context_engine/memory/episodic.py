@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 
 @dataclass
@@ -37,6 +36,7 @@ class EpisodicMemory:
         path = Path(self.storage_path)
         if path.exists():
             import json
+
             try:
                 data = json.loads(path.read_text())
                 for d in data.values():
@@ -58,14 +58,18 @@ class EpisodicMemory:
         """Persist entries to disk."""
         Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
         import json
-        data = {eid: {
-            "id": e.id,
-            "timestamp": e.timestamp.isoformat(),
-            "content": e.content,
-            "importance": e.importance,
-            "embedding": e.embedding,
-            "tags": e.tags,
-        } for eid, e in self._entries.items()}
+
+        data = {
+            eid: {
+                "id": e.id,
+                "timestamp": e.timestamp.isoformat(),
+                "content": e.content,
+                "importance": e.importance,
+                "embedding": e.embedding,
+                "tags": e.tags,
+            }
+            for eid, e in self._entries.items()
+        }
         Path(self.storage_path).write_text(json.dumps(data, indent=2))
 
     def add(
@@ -105,7 +109,8 @@ class EpisodicMemory:
         """Query episodic memory by keyword match."""
         q = query.lower()
         matches = [
-            e for e in self._entries.values()
+            e
+            for e in self._entries.values()
             if q in e.content.lower() or any(q in (t or "") for t in (e.tags or []))
         ]
         # Sort by importance desc, then timestamp desc

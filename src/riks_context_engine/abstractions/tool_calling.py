@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Shared data classes
 # ---------------------------------------------------------------------------
@@ -225,8 +224,11 @@ class ToolDefinition:
                         description=prop.get("description", ""),
                         required=name in required,
                         enum=prop.get("enum"),
-                        schema_extra={k: v for k, v in prop.items()
-                                      if k not in ("type", "description", "enum")},
+                        schema_extra={
+                            k: v
+                            for k, v in prop.items()
+                            if k not in ("type", "description", "enum")
+                        },
                     )
                 )
         return cls(
@@ -253,8 +255,11 @@ class ToolDefinition:
                         description=prop.get("description", ""),
                         required=name in required,
                         enum=prop.get("enum"),
-                        schema_extra={k: v for k, v in prop.items()
-                                      if k not in ("type", "description", "enum")},
+                        schema_extra={
+                            k: v
+                            for k, v in prop.items()
+                            if k not in ("type", "description", "enum")
+                        },
                     )
                 )
         return cls(
@@ -281,8 +286,11 @@ class ToolDefinition:
                         description=prop.get("description", ""),
                         required=name in required,
                         enum=prop.get("enum"),
-                        schema_extra={k: v for k, v in prop.items()
-                                      if k not in ("type", "description", "enum")},
+                        schema_extra={
+                            k: v
+                            for k, v in prop.items()
+                            if k not in ("type", "description", "enum")
+                        },
                     )
                 )
         return cls(
@@ -370,9 +378,7 @@ class OpenAIToolAdapter(ToolAdapter):
     def wrap_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
         return [tool.to_openai() for tool in tools]
 
-    def unwrap_results(
-        self, raw_results: list[dict[str, Any]]
-    ) -> list[ToolCallResult]:
+    def unwrap_results(self, raw_results: list[dict[str, Any]]) -> list[ToolCallResult]:
         results: list[ToolCallResult] = []
         for item in self._ensure_list(raw_results):
             fn = item.get("function", item)
@@ -391,9 +397,7 @@ class OpenAIToolAdapter(ToolAdapter):
             )
         return results
 
-    def wrap_result_message(
-        self, results: list[ToolCallResult]
-    ) -> dict[str, Any]:
+    def wrap_result_message(self, results: list[ToolCallResult]) -> dict[str, Any]:
         tool_calls = [r.to_openai() for r in results]
         return {"role": "tool", "tool_calls": tool_calls}
 
@@ -406,9 +410,7 @@ class AnthropicToolAdapter(ToolAdapter):
     def wrap_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
         return [tool.to_anthropic() for tool in tools]
 
-    def unwrap_results(
-        self, raw_results: list[dict[str, Any]]
-    ) -> list[ToolCallResult]:
+    def unwrap_results(self, raw_results: list[dict[str, Any]]) -> list[ToolCallResult]:
         results: list[ToolCallResult] = []
         for item in self._ensure_list(raw_results):
             results.append(
@@ -421,9 +423,7 @@ class AnthropicToolAdapter(ToolAdapter):
             )
         return results
 
-    def wrap_result_message(
-        self, results: list[ToolCallResult]
-    ) -> list[dict[str, Any]]:
+    def wrap_result_message(self, results: list[ToolCallResult]) -> list[dict[str, Any]]:
         return [{"type": "tool_use", **r.to_anthropic()} for r in results]
 
 
@@ -435,9 +435,7 @@ class GeminiToolAdapter(ToolAdapter):
     def wrap_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
         return [{"function_declarations": [tool.to_gemini() for tool in tools]}]
 
-    def unwrap_results(
-        self, raw_results: list[dict[str, Any]]
-    ) -> list[ToolCallResult]:
+    def unwrap_results(self, raw_results: list[dict[str, Any]]) -> list[ToolCallResult]:
         results: list[ToolCallResult] = []
         for item in self._ensure_list(raw_results):
             fc = item.get("functionCall", item)
@@ -451,11 +449,10 @@ class GeminiToolAdapter(ToolAdapter):
             )
         return results
 
-    def wrap_result_message(
-        self, results: list[ToolCallResult]
-    ) -> list[dict[str, Any]]:
-        return [{"functionResponse": {"name": r.tool_name, "response": r.arguments}}
-                for r in results]
+    def wrap_result_message(self, results: list[ToolCallResult]) -> list[dict[str, Any]]:
+        return [
+            {"functionResponse": {"name": r.tool_name, "response": r.arguments}} for r in results
+        ]
 
 
 class CustomSchemaAdapter(ToolAdapter):
@@ -464,13 +461,12 @@ class CustomSchemaAdapter(ToolAdapter):
     provider = Provider.CUSTOM
 
     def wrap_tools(self, tools: list[ToolDefinition]) -> list[dict[str, Any]]:
-        return [{"name": tool.name, "description": tool.description,
-                 "parameters": tool.to_custom()}
-                for tool in tools]
+        return [
+            {"name": tool.name, "description": tool.description, "parameters": tool.to_custom()}
+            for tool in tools
+        ]
 
-    def unwrap_results(
-        self, raw_results: list[dict[str, Any]]
-    ) -> list[ToolCallResult]:
+    def unwrap_results(self, raw_results: list[dict[str, Any]]) -> list[ToolCallResult]:
         results: list[ToolCallResult] = []
         for item in self._ensure_list(raw_results):
             results.append(
@@ -483,9 +479,7 @@ class CustomSchemaAdapter(ToolAdapter):
             )
         return results
 
-    def wrap_result_message(
-        self, results: list[ToolCallResult]
-    ) -> list[dict[str, Any]]:
+    def wrap_result_message(self, results: list[ToolCallResult]) -> list[dict[str, Any]]:
         return [{"tool": r.tool_name, "arguments": r.arguments} for r in results]
 
 
@@ -511,8 +505,10 @@ def get_adapter(provider: Provider | str) -> ToolAdapter:
                 f"Unknown provider {provider!r}. Supported: {[p.value for p in Provider]}"
             )
     if provider not in _ADAPTERS:
-        raise ValueError(f"No adapter registered for provider {provider!r}. "
-                         f"Supported: {[p.value for p in Provider]}")
+        raise ValueError(
+            f"No adapter registered for provider {provider!r}. "
+            f"Supported: {[p.value for p in Provider]}"
+        )
     return _ADAPTERS[provider]
 
 

@@ -1,11 +1,10 @@
 """Semantic memory - long-term structured knowledge."""
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
 import json
 import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 
 
 @dataclass
@@ -62,8 +61,12 @@ class SemanticMemory:
                     embedding BLOB
                 )
             """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_subject ON semantic_entries(subject)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_predicate ON semantic_entries(predicate)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_semantic_subject ON semantic_entries(subject)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_semantic_predicate ON semantic_entries(predicate)"
+            )
 
     def add(
         self,
@@ -93,9 +96,17 @@ class SemanticMemory:
                 (id, subject, predicate, object, confidence, created_at, last_accessed, access_count, embedding)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (entry.id, entry.subject, entry.predicate, entry.object,
-                 entry.confidence, entry.created_at.isoformat(),
-                 entry.last_accessed.isoformat(), entry.access_count, emb_bytes),
+                (
+                    entry.id,
+                    entry.subject,
+                    entry.predicate,
+                    entry.object,
+                    entry.confidence,
+                    entry.created_at.isoformat(),
+                    entry.last_accessed.isoformat(),
+                    entry.access_count,
+                    emb_bytes,
+                ),
             )
             conn.commit()
         return entry
@@ -136,7 +147,9 @@ class SemanticMemory:
             embedding=emb,
         )
 
-    def query(self, subject: str | None = None, predicate: str | None = None) -> list[SemanticEntry]:
+    def query(
+        self, subject: str | None = None, predicate: str | None = None
+    ) -> list[SemanticEntry]:
         """Query semantic memory by subject and/or predicate."""
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
@@ -166,9 +179,11 @@ class SemanticMemory:
         matches = []
         for r in rows:
             entry = self._row_to_entry(r)
-            if (q in entry.subject.lower() or
-                q in entry.predicate.lower() or
-                (entry.object and q in entry.object.lower())):
+            if (
+                q in entry.subject.lower()
+                or q in entry.predicate.lower()
+                or (entry.object and q in entry.object.lower())
+            ):
                 matches.append(entry)
         return matches
 
@@ -192,6 +207,7 @@ class SemanticMemory:
         <MemoryType.SEMANTIC: 'semantic'>
         """
         from riks_context_engine.memory.base import MemoryEntry, MemoryType
+
         return MemoryEntry(
             id=self.id,
             type=MemoryType.SEMANTIC,
