@@ -187,7 +187,7 @@ class SemanticMemory:
                 matches.append(entry)
         return matches
 
-    def to_memory_entry(self) -> "riks_context_engine.memory.base.MemoryEntry":
+    def to_memory_entry(self) -> "riks_context_engine.memory.base.MemoryEntry":  # noqa: F821
         """Convert this SemanticEntry to a generic MemoryEntry.
 
         Useful for interoperability with the unified MemoryEntry schema
