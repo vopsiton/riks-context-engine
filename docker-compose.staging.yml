@@ -1,0 +1,41 @@
+version: '3.9'
+
+# Staging environment override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.staging.yml up
+
+services:
+  staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: riks-context-engine:staging
+    container_name: riks-context-engine-staging
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATA_DIR=/app/data
+      - ENVIRONMENT=staging
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - CHROMA_HOST=${CHROMA_HOST:-localhost}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LOG_LEVEL=DEBUG
+      - TEST_MODE=true
+    volumes:
+      - staging-data:/app/data
+    ports:
+      - "8001:8000"  # Staging on different port
+    networks:
+      - riks-staging-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+networks:
+  riks-staging-net:
+    driver: bridge
+
+volumes:
+  staging-data:

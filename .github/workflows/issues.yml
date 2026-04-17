@@ -1,15 +1,208 @@
-name: Issues
+name: Issue Automation
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened, labeled, closed, assigned]
+  pull_request:
+    types: [opened, closed, labeled]
+  workflow_dispatch:
 
 jobs:
-  triage:
+  # ===== Issue Triage on Open ===== #
+  triage-issue:
     name: Issue Triage
     runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
     steps:
-      - name: Label check
+      - name: Parse issue
         run: |
-          echo "Issue opened: ${{ github.event.issue.title }}"
+          echo "Issue: ${{ github.event.issue.title }}"
+          echo "Number: #${{ github.event.issue.number }}"
           echo "Labels: ${{ github.event.issue.labels.*.name }}"
+
+      - name: Auto-label based on title patterns
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title.toLowerCase();
+            const labels_to_add = [];
+
+            if (title.includes('bug') || title.includes('fix')) {
+              labels_to_add.push('bug');
+            }
+            if (title.includes('feature') || title.includes('enhancement')) {
+              labels_to_add.push('enhancement');
+            }
+            if (title.includes('docs') || title.includes('documentation')) {
+              labels_to_add.push('documentation');
+            }
+            if (title.includes('ci') || title.includes('cd') || title.includes('pipeline')) {
+              labels_to_add.push('ci-cd');
+            }
+            if (title.includes('test')) {
+              labels_to_add.push('testing');
+            }
+            if (title.includes('security')) {
+              labels_to_add.push('security');
+            }
+
+            if (labels_to_add.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labels_to_add
+              });
+            }
+
+  # ===== PR Triage on Open ===== #
+  triage-pr:
+    name: PR Triage
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    steps:
+      - name: Parse PR
+        run: |
+          echo "PR: ${{ github.event.pull_request.title }}"
+          echo "Number: #${{ github.event.pull_request.number }}"
+          echo "Base branch: ${{ github.event.pull_request.base.ref }}"
+
+      - name: Check PR template
+        run: |
+          # Verify PR description length
+          body_length=$(echo "${{ github.event.pull_request.body }}" | wc -c)
+          if [ "$body_length" -lt 50 ]; then
+            echo "WARNING: PR description is very short. Please add details."
+          fi
+
+  # ===== Automate Project Board ===== #
+  sync-project:
+    name: Sync Project Board
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' || github.event_name == 'pull_request'
+    steps:
+      - name: Add to project
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const projectNumber = 1; // TODO: Set project number
+            const { owner, repo } = context.repo;
+            const itemId = context.payload.issue?.id || context.payload.pull_request?.id;
+
+            if (!itemId) {
+              console.log('No item ID found');
+              return;
+            }
+
+            // Get project columns
+            const columns = await github.rest.projects.listColumns({
+              owner, repo,
+              project_number: projectNumber
+            });
+
+            // Auto-assign to Sprint based on labels
+            const labels = context.payload.issue?.labels || context.payload.pull_request?.labels || [];
+            const hasP0 = labels.some(l => l.name === 'P0');
+            const hasP1 = labels.some(l => l.name === 'P1');
+
+            const targetColumn = hasP0 || hasP1 ? 'Sprint' : 'Backlog';
+
+            console.log(`Would assign to: ${targetColumn}`);
+
+  # ===== Issue Closed - Update Stats ===== #
+  issue-closed:
+    name: Issue Closed
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'closed'
+    steps:
+      - name: Close summary
+        run: |
+          echo "Issue #${{ github.event.issue.number }} closed"
+          echo "Duration: ${{ github.event.issue.created_at }} → ${{ github.event.issue.closed_at }}"
+          # TODO: Post to internal tracking
+
+  # ===== Auto-comment on Issues ===== #
+  auto-comment:
+    name: Auto Comment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues'
+    steps:
+      - name: Welcome comment
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number
+            });
+
+            if (comments.data.length === 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: 'Thank you for opening this issue! ' +
+                      'Please provide as much detail as possible: ' +
+                      'steps to reproduce, expected vs actual behavior, ' +
+                      'and your environment (OS, Python version, etc.).'
+              });
+            }
+
+  # ===== PR Label Automation ===== #
+  pr-labels:
+    name: PR Labels
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'labeled')
+    steps:
+      - name: Check size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const files = await github.rest.pullRequest.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+
+            let additions = 0;
+            let deletions = 0;
+            let changedFiles = files.data.length;
+
+            files.data.forEach(f => {
+              additions += f.additions;
+              deletions += f.deletions;
+            });
+
+            const size = additions + deletions;
+            const labels = pr.labels.map(l => l.name);
+
+            // Size labels
+            if (size > 1000 && !labels.includes('size:XL')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['size:XL']
+              });
+            } else if (size > 500 && !labels.includes('size:L')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['size:L']
+              });
+            } else if (size > 100 && !labels.includes('size:M')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['size:M']
+              });
+            }
+
+            console.log(`PR #${pr.number}: +${additions} -${deletions} (${changedFiles} files)`);
