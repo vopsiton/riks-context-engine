@@ -98,7 +98,6 @@ class TierManager:
             predicate="observed_as",
             object=text,
             confidence=ep_entry.importance,
-            generate_embedding=True,
         )
 
         # Remove from episodic
@@ -122,11 +121,12 @@ class TierManager:
             return False
 
         # Store in episodic
+        object_text = sem_entry.object or f"{sem_entry.subject} {sem_entry.predicate}"
         self.episodic.add(
-            content=sem_entry.to_memory_entry().content,
+            content=object_text,
             importance=sem_entry.confidence,
             tags=[],
-            embedding=sem_entry.embedding,
+            embedding=None,
         )
 
         # Remove from semantic
