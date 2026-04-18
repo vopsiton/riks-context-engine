@@ -15,7 +15,6 @@ from typing import Any
 
 import yaml
 
-
 SCHEMA_VERSION = "1.0"
 
 
@@ -58,7 +57,9 @@ class ExportManifest:
         )
 
 
-def _entry_in_date_range(ts: datetime, date_from: datetime | None, date_to: datetime | None) -> bool:
+def _entry_in_date_range(
+    ts: datetime, date_from: datetime | None, date_to: datetime | None
+) -> bool:
     if date_from and ts < date_from:
         return False
     if date_to and ts > date_to:
@@ -160,7 +161,9 @@ def dump_manifest(manifest: ExportManifest, format: str, path: Path | None = Non
     if format == MemoryFormat.JSON:
         content = json.dumps(data, indent=2, ensure_ascii=False)
     else:
-        content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        content = yaml.safe_dump(
+            data, default_flow_style=False, sort_keys=False, allow_unicode=True
+        )
     if path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
