@@ -412,7 +412,7 @@ class KnowledgeGraph:
             result = get_embedder().embed(text)
             vec: list[float] | None = getattr(result, "embedding", None)
             setattr(self, cache_key, vec)
-            return vec  # type: ignore[no-any-return]
+            return vec
         except Exception:
             return None
 

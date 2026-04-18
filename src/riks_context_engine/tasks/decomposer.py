@@ -225,16 +225,8 @@ class TaskDecomposer:
         plan = self.plan_execution(graph)
 
         for batch in plan:
-            # batch is list[Task] (sequential) or list[list[Task]] (parallel batches)
-            if batch and isinstance(batch[0], list):
-                # Parallel: batch is list of task lists [[task1, task2], ...]
-                for task_list in batch:
-                    for task in task_list:
-                        task.mark_running()
-            else:
-                # Sequential: batch is list of Tasks [task1, task2, ...]
-                for task in batch:
-                    task.mark_running()
+            for task in batch:
+                task.mark_running()
 
         # In a real implementation, this would run tasks
         # For now, just mark as done

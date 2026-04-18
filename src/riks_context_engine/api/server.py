@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, AsyncGenerator, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,7 +42,7 @@ _procedural_memory: ProceduralMemory | None = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _episodic_memory, _semantic_memory, _procedural_memory
     data_dir = os.environ.get("DATA_DIR", "data")
     _episodic_memory = EpisodicMemory(storage_path=f"{data_dir}/episodic.json")
