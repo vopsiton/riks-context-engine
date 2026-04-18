@@ -29,6 +29,20 @@ class SemanticEntry:
     access_count: int = 0
     embedding: list[float] | None = None
 
+    def to_memory_entry(self) -> MemoryEntry:
+        """Convert this SemanticEntry to a generic MemoryEntry."""
+        from riks_context_engine.memory.base import MemoryEntry, MemoryType
+
+        return MemoryEntry(
+            id=self.id,
+            type=MemoryType.SEMANTIC,
+            content=f"{self.subject} {self.predicate} {self.object or ''}",
+            importance=self.confidence,
+            embedding=self.embedding,
+            access_count=self.access_count,
+            last_accessed=self.last_accessed,
+        )
+
 
 class SemanticMemory:
     """Long-term structured knowledge store.
@@ -194,37 +208,6 @@ class SemanticMemory:
             ):
                 matches.append(entry)
         return matches
-
-    def to_memory_entry(self) -> MemoryEntry:
-        """Convert this SemanticEntry to a generic MemoryEntry.
-
-        Useful for interoperability with the unified MemoryEntry schema
-        used across all three memory tiers.
-
-        Returns
-        -------
-        MemoryEntry
-            A MemoryEntry with type=SEMANTIC, content="subject predicate object",
-            and importance=confidence.
-
-        Example
-        -------
-        >>> entry = sem.add("auth_service", "uses", "JWT RS256")
-        >>> me = entry.to_memory_entry()
-        >>> me.type
-        <MemoryType.SEMANTIC: 'semantic'>
-        """
-        from riks_context_engine.memory.base import MemoryEntry, MemoryType
-
-        return MemoryEntry(
-            id=self.id,
-            type=MemoryType.SEMANTIC,
-            content=f"{self.subject} {self.predicate} {self.object or ''}",
-            importance=self.confidence,
-            embedding=self.embedding,
-            access_count=self.access_count,
-            last_accessed=self.last_accessed,
-        )
 
     def __len__(self) -> int:
         with self._conn() as conn:
