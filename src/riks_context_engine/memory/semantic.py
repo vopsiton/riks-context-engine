@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from typing import Any
+
 if TYPE_CHECKING:
     from riks_context_engine.memory.base import MemoryEntry
 import sqlite3
@@ -35,7 +37,7 @@ class SemanticMemory:
     accessed repeatedly across sessions.
     """
 
-    def __init__(self, db_path: str | None = None, embedder=None):
+    def __init__(self, db_path: str | None = None, embedder: Any | None = None) -> None:
         self.db_path = db_path or "data/semantic.db"
         self.embedder = embedder
         self._is_temp = self.db_path.startswith(":") and self.db_path.endswith(":")
@@ -45,10 +47,10 @@ class SemanticMemory:
         self._conn = lambda: self._shared_conn
         self._init_db()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self._shared_conn.close()
 
-    def _connect(self):
+    def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
 
     def _init_db(self) -> None:

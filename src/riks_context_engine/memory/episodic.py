@@ -97,8 +97,8 @@ class EpisodicMemory:
         """Get a single entry by ID, incrementing access count."""
         entry = self._entries.get(entry_id)
         if entry:
-            entry.access_count += 1  # type: ignore[attr-defined]
-            entry.last_accessed = datetime.now(timezone.utc)  # type: ignore[attr-defined]
+            entry.access_count += 1
+            entry.last_accessed = datetime.now(timezone.utc)
         return entry
 
     @property

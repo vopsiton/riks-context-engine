@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from enum import Enum
 from math import sqrt
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
-from riks_context_engine.memory.embedding import get_embedder
+from riks_context_engine.memory.embedding import EmbeddingResult, get_embedder
 
 
 class EmbedderProtocol(Protocol):
@@ -400,7 +400,7 @@ class KnowledgeGraph:
         """Get cached embedding vector for an entity, computing if needed."""
         cache_key = f"_emb_{entity.id}"
         if hasattr(self, cache_key):
-            return getattr(self, cache_key)
+            return cast("list[float] | None", getattr(self, cache_key))
 
         # Build descriptive text from entity properties
         parts = [entity.name]
@@ -410,9 +410,9 @@ class KnowledgeGraph:
 
         try:
             result = get_embedder().embed(text)
-            vec = result.embedding if hasattr(result, "embedding") else result
+            vec: list[float] | None = getattr(result, "embedding", None)
             setattr(self, cache_key, vec)
-            return vec
+            return vec  # type: ignore[no-any-return]
         except Exception:
             return None
 

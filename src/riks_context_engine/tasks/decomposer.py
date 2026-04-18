@@ -35,14 +35,14 @@ class Task:
     completed_at: datetime | None = None
     retry_count: int = 0
 
-    def mark_done(self):
+    def mark_done(self) -> None:
         self.status = TaskStatus.DONE
         self.completed_at = datetime.now(timezone.utc)
 
-    def mark_failed(self):
+    def mark_failed(self) -> None:
         self.status = TaskStatus.FAILED
 
-    def mark_running(self):
+    def mark_running(self) -> None:
         self.status = TaskStatus.RUNNING
 
     def can_execute(self, completed_task_ids: set[str]) -> bool:

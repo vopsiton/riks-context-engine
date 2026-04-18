@@ -106,7 +106,7 @@ class ReflectionAnalyzer:
     was missing.
     """
 
-    def __init__(self, semantic_memory=None):
+    def __init__(self, semantic_memory=None):  # type: ignore[no-untyped-def]
         self.semantic_memory = semantic_memory
         self._lessons: dict[str, Lesson] = {}
         self._mistake_counts: dict[str, int] = {}
