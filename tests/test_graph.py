@@ -1,9 +1,7 @@
 """Tests for knowledge graph module."""
 
-import pytest
 
 from riks_context_engine.graph.knowledge_graph import (
-    Entity,
     EntityType,
     KnowledgeGraph,
     RelationshipType,

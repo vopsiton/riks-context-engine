@@ -15,7 +15,6 @@ from typing import Any
 
 import yaml
 
-
 SCHEMA_VERSION = "1.0"
 
 

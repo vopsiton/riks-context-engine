@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -19,7 +20,6 @@ from riks_context_engine.abstractions.tool_calling import (
     get_adapter,
     register_adapter,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

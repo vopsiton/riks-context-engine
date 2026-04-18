@@ -1,11 +1,16 @@
 """Semantic memory - long-term structured knowledge."""
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+from __future__ import annotations
+
 import json
 import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from riks_context_engine.memory.base import MemoryEntry
 
 
 @dataclass
@@ -172,7 +177,7 @@ class SemanticMemory:
                 matches.append(entry)
         return matches
 
-    def to_memory_entry(self) -> "riks_context_engine.memory.base.MemoryEntry":
+    def to_memory_entry(self) -> MemoryEntry:
         """Convert this SemanticEntry to a generic MemoryEntry.
 
         Useful for interoperability with the unified MemoryEntry schema

@@ -7,8 +7,6 @@ import tempfile
 import pytest
 
 from riks_context_engine.memory.episodic import EpisodicMemory
-from riks_context_engine.memory.semantic import SemanticMemory
-from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.export import (
     SCHEMA_VERSION,
     dump_manifest,
@@ -16,6 +14,8 @@ from riks_context_engine.memory.export import (
     import_to_memory,
     parse_manifest,
 )
+from riks_context_engine.memory.procedural import ProceduralMemory
+from riks_context_engine.memory.semantic import SemanticMemory
 
 
 def _temp_json_path():
