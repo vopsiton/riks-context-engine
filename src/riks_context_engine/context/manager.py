@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 @dataclass
@@ -74,17 +75,20 @@ class ContextWindowManager:
         >>> msg.tokens_remaining  # Show tokens left in window
     """
 
-    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max"):
+    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max", storage_path: str | None = None):
         """Initialize context window manager.
 
         Args:
             max_tokens: Maximum token capacity for the context window.
                        Actual usable tokens = max_tokens - 2 * TOKEN_BUFFER
             model: Model name for token estimation (affects encoding)
+            storage_path: Optional path for persisting context history to disk.
+                         Defaults to "data/context_history.json".
         """
         self.max_tokens = max_tokens
         self.usable_tokens = max_tokens - (2 * TOKEN_BUFFER_PER_SIDE)
         self.model = model
+        self.storage_path = storage_path  # None = no auto-persist
         self.messages: list[ContextMessage] = []
         self._total_pruning_events = 0
         self.stats = ContextStats(
@@ -93,6 +97,7 @@ class ContextWindowManager:
             messages_count=0,
             active_messages_count=0,
         )
+        self.load()
 
     def add(
         self,
@@ -127,6 +132,7 @@ class ContextWindowManager:
         self.messages.append(msg)
         self._update_stats()
         self._prune_if_needed()
+        self._auto_save()
         return msg
 
     def get_messages(self, include_pruned: bool = False) -> list[ContextMessage]:
@@ -310,3 +316,75 @@ class ContextWindowManager:
         self.messages.clear()
         self._total_pruning_events = 0
         self._update_stats()
+        self._auto_save()
+
+    def save(self) -> None:
+        """Persist context history to disk.
+
+        Saves all messages (including pruned ones) to JSON file.
+        Creates parent directories if needed.
+        """
+        import json
+        Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "version": 1,
+            "max_tokens": self.max_tokens,
+            "model": self.model,
+            "total_pruning_events": self._total_pruning_events,
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "timestamp": m.timestamp.isoformat(),
+                    "importance": m.importance,
+                    "tokens": m.tokens,
+                    "is_grounding": m.is_grounding,
+                    "is_pruned": m.is_pruned,
+                    "priority_tier": m.priority_tier,
+                }
+                for m in self.messages
+            ],
+        }
+        Path(self.storage_path).write_text(json.dumps(data, indent=2))
+
+    def load(self) -> None:
+        """Load context history from disk.
+
+        Called automatically on init (if storage_path is set).
+        Can be called manually to reload.
+        Silently ignores missing or corrupt files.
+        """
+        if self.storage_path is None:
+            return
+        import json
+        path = Path(self.storage_path)
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text())
+            self.messages = []
+            for m_data in data.get("messages", []):
+                ts = m_data["timestamp"]
+                if isinstance(ts, str):
+                    ts = datetime.fromisoformat(ts)
+                self.messages.append(ContextMessage(
+                    id=m_data["id"],
+                    role=m_data["role"],
+                    content=m_data["content"],
+                    timestamp=ts,
+                    importance=m_data.get("importance", 0.5),
+                    tokens=m_data.get("tokens", 0),
+                    is_grounding=m_data.get("is_grounding", False),
+                    is_pruned=m_data.get("is_pruned", False),
+                    priority_tier=m_data.get("priority_tier", 2),
+                ))
+            self._total_pruning_events = data.get("total_pruning_events", 0)
+            self._update_stats()
+        except (json.JSONDecodeError, KeyError, ValueError, OSError):
+            pass  # Start fresh on corruption
+
+    def _auto_save(self) -> None:
+        """Auto-save after mutations if storage path is configured."""
+        if self.storage_path:
+            self.save()
