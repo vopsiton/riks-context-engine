@@ -1,0 +1,32 @@
+[
+  {
+    "id": "pr_8def0c1c8128493c9962ddd6aa7eb0f1",
+    "name": "Deploy Service",
+    "description": "Deploy a microservice to Kubernetes",
+    "steps": [
+      "build image",
+      "push to registry",
+      "apply k8s manifests"
+    ],
+    "created_at": "2026-04-18T23:02:59.187299+00:00",
+    "last_used": "2026-04-18T23:02:59.187299+00:00",
+    "use_count": 0,
+    "success_rate": 1.0,
+    "tags": [],
+    "metadata": {}
+  },
+  {
+    "id": "pr_3409fa234d324593a5f9101d34ca48be",
+    "name": "Test Proc",
+    "description": "A test",
+    "steps": [
+      "step1"
+    ],
+    "created_at": "2026-04-18T23:02:59.187581+00:00",
+    "last_used": "2026-04-18T23:02:59.187581+00:00",
+    "use_count": 0,
+    "success_rate": 1.0,
+    "tags": [],
+    "metadata": {}
+  }
+]

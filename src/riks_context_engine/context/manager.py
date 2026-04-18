@@ -2,7 +2,10 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
+import json
+import os
 
 
 @dataclass
@@ -307,3 +310,86 @@ class ContextWindowManager:
         self.messages.clear()
         self._total_pruning_events = 0
         self._update_stats()
+
+    def save(self, path: str | Path | None = None) -> str:
+        """Persist context window messages to a JSON file.
+
+        Args:
+            path: File path to save to. Defaults to 'data/context_history.json'.
+
+        Returns:
+            The path where the file was saved.
+        """
+        save_path = Path(path) if path else Path("data/context_history.json")
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        data = {
+            "version": 1,
+            "max_tokens": self.max_tokens,
+            "model": self.model,
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "timestamp": m.timestamp.isoformat(),
+                    "importance": m.importance,
+                    "tokens": m.tokens,
+                    "is_grounding": m.is_grounding,
+                    "is_pruned": m.is_pruned,
+                    "priority_tier": m.priority_tier,
+                }
+                for m in self.messages
+            ],
+        }
+
+        json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+        fd = os.open(str(save_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, json_bytes)
+        finally:
+            os.close(fd)
+
+        return str(save_path)
+
+    def load(self, path: str | Path | None = None) -> int:
+        """Load context window messages from a JSON file.
+
+        Args:
+            path: File path to load from. Defaults to 'data/context_history.json'.
+
+        Returns:
+            Number of messages loaded.
+        """
+        load_path = Path(path) if path else Path("data/context_history.json")
+
+        if not load_path.exists():
+            return 0
+
+        try:
+            with open(load_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            return 0
+
+        self.messages.clear()
+        version = data.get("version", 0)
+        if version != 1:
+            return 0
+
+        for m_data in data.get("messages", []):
+            msg = ContextMessage(
+                id=m_data["id"],
+                role=m_data["role"],
+                content=m_data["content"],
+                timestamp=datetime.fromisoformat(m_data["timestamp"]),
+                importance=m_data.get("importance", 0.5),
+                tokens=m_data.get("tokens", 0),
+                is_grounding=m_data.get("is_grounding", False),
+                is_pruned=m_data.get("is_pruned", False),
+                priority_tier=m_data.get("priority_tier", 2),
+            )
+            self.messages.append(msg)
+
+        self._update_stats()
+        return len(self.messages)

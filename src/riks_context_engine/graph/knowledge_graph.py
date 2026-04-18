@@ -97,3 +97,40 @@ class KnowledgeGraph:
     def expand(self, entity_id: str, depth: int = 1) -> list[tuple[Entity, Relationship]]:
         """Expand from an entity to connected entities."""
         return []
+
+    def load(self) -> None:
+        """Load graph data from SQLite database (no-op if db_path not set).
+
+        Note: This is a stub for compatibility with test infrastructure.
+        Full KG persistence via SQLite will be implemented separately.
+        """
+        # No-op: KG uses in-memory storage only for now.
+        # When full SQLite persistence is added, this will load _entities
+        # and _relationships from the database.
+        pass
+
+    def get_entity(self, entity_id: str) -> Entity | None:
+        """Get an entity by ID."""
+        return self._entities.get(entity_id)
+
+    def get_relationships(self, entity_id: str) -> list[Relationship]:
+        """Get all relationships involving an entity."""
+        return [
+            r for r in self._relationships.values()
+            if r.from_entity_id == entity_id or r.to_entity_id == entity_id
+        ]
+
+    def semantic_search(self, query: str, top_k: int = 5) -> list[tuple[Entity, float]]:
+        """Simple substring search over entity names (fallback when no embedding engine)."""
+        query_lower = query.lower()
+        results = []
+        for entity in self._entities.values():
+            score = 0.0
+            if query_lower in entity.name.lower():
+                score = 1.0
+            elif any(query_lower in p.lower() for p in entity.properties.values() if isinstance(p, str)):
+                score = 0.5
+            if score > 0:
+                results.append((entity, score))
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results[:top_k]
