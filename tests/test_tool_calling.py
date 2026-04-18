@@ -20,10 +20,10 @@ from riks_context_engine.abstractions.tool_calling import (
     register_adapter,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def weather_tool() -> ToolDefinition:
@@ -76,6 +76,7 @@ def calculator_tool() -> ToolDefinition:
 # ToolParameter
 # ---------------------------------------------------------------------------
 
+
 class TestToolParameter:
     def test_to_openai(self) -> None:
         param = ToolParameter(
@@ -117,6 +118,7 @@ class TestToolParameter:
 # ---------------------------------------------------------------------------
 # ToolDefinition
 # ---------------------------------------------------------------------------
+
 
 class TestToolDefinition:
     def test_required_params_inferred_from_parameters(self) -> None:
@@ -263,10 +265,14 @@ class TestToolDefinition:
 # ToolCallResult
 # ---------------------------------------------------------------------------
 
+
 class TestToolCallResult:
     def test_to_openai(self) -> None:
-        raw = {"id": "call_1", "type": "function",
-               "function": {"name": "get_weather", "arguments": '{"city": "Istanbul"}'}}
+        raw = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "get_weather", "arguments": '{"city": "Istanbul"}'},
+        }
         result = ToolCallResult(
             tool_name="get_weather",
             arguments={"city": "Istanbul"},
@@ -307,6 +313,7 @@ class TestToolCallResult:
 # OpenAIToolAdapter
 # ---------------------------------------------------------------------------
 
+
 class TestOpenAIToolAdapter:
     def test_wrap_tools(self, weather_tool: ToolDefinition) -> None:
         adapter = OpenAIToolAdapter()
@@ -335,8 +342,13 @@ class TestOpenAIToolAdapter:
 
     def test_unwrap_results_dict_args(self) -> None:
         adapter = OpenAIToolAdapter()
-        raw = [{"id": "call_0", "type": "function",
-                "function": {"name": "get_weather", "arguments": {"city": "Ankara"}}}]
+        raw = [
+            {
+                "id": "call_0",
+                "type": "function",
+                "function": {"name": "get_weather", "arguments": {"city": "Ankara"}},
+            }
+        ]
         results = adapter.unwrap_results(raw)
         assert results[0].arguments == {"city": "Ankara"}
 
@@ -359,6 +371,7 @@ class TestOpenAIToolAdapter:
 # ---------------------------------------------------------------------------
 # AnthropicToolAdapter
 # ---------------------------------------------------------------------------
+
 
 class TestAnthropicToolAdapter:
     def test_wrap_tools(self, weather_tool: ToolDefinition) -> None:
@@ -396,6 +409,7 @@ class TestAnthropicToolAdapter:
 # ---------------------------------------------------------------------------
 # GeminiToolAdapter
 # ---------------------------------------------------------------------------
+
 
 class TestGeminiToolAdapter:
     def test_wrap_tools(self, weather_tool: ToolDefinition) -> None:
@@ -440,6 +454,7 @@ class TestGeminiToolAdapter:
 # CustomSchemaAdapter
 # ---------------------------------------------------------------------------
 
+
 class TestCustomSchemaAdapter:
     def test_wrap_tools(self, calculator_tool: ToolDefinition) -> None:
         adapter = CustomSchemaAdapter()
@@ -461,6 +476,7 @@ class TestCustomSchemaAdapter:
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
+
 
 class TestRegistry:
     def test_get_adapter_openai(self) -> None:
@@ -504,6 +520,7 @@ class TestRegistry:
 # ---------------------------------------------------------------------------
 # Round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestRoundTrip:
     def test_openai_roundtrip(self, weather_tool: ToolDefinition) -> None:

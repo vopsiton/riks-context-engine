@@ -6,9 +6,9 @@
     <title>Rik Context Engine - Chat</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e; 
+            background: #1a1a2e;
             color: #eee;
             height: 100vh;
             display: flex;
@@ -111,7 +111,7 @@
     <script>
         const API_URL = 'http://localhost:8000';
         let models = [];
-        
+
         const chat = document.getElementById('chat');
         const input = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
@@ -160,14 +160,14 @@
         async function sendMessage() {
             const text = input.value.trim();
             if (!text) return;
-            
+
             addMessage(text, 'user');
             input.value = '';
             sendBtn.disabled = true;
-            
+
             const typing = addTyping();
             const model = modelSelect.value;
-            
+
             try {
                 const res = await fetch(`${API_URL}/api/chat`, {
                     method: 'POST',
@@ -176,7 +176,7 @@
                 });
                 const data = await res.json();
                 typing.remove();
-                
+
                 if (data.error) {
                     addMessage(`Hata: ${data.error}`, 'error');
                 } else {
@@ -186,7 +186,7 @@
                 typing.remove();
                 addMessage(`Bağlantı hatası: ${err.message}`, 'error');
             }
-            
+
             sendBtn.disabled = false;
             input.focus();
         }

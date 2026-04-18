@@ -2,8 +2,8 @@
 
 > A detailed view of the system's design, data flow, and module relationships.
 
-**Version:** 0.2.0  
-**License:** AGPL-3.0  
+**Version:** 0.2.0
+**License:** AGPL-3.0
 **Repository:** [github.com/vopsiton/riks-context-engine](https://github.com/vopsiton/riks-context-engine)
 
 ---
@@ -116,7 +116,7 @@ Mirrors how humans actually remember things — short-term episodic → long-ter
 └──────────────────────────────────────────────────────────┘
 
                ↑ promote (access_count > threshold)
-               │                  
+               │
 ┌──────────────┴──────────────────────────────────────────┐
 │                  SEMANTIC MEMORY                          │
 │  Storage:  SQLite (data/semantic.db)                      │

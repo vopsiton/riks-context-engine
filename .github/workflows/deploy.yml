@@ -113,7 +113,7 @@ jobs:
         run: |
           echo "${{ secrets.SERVER_SSH_KEY }}" > deploy_key
           chmod 600 deploy_key
-          
+
           ssh -o StrictHostKeyChecking=no \
               -i deploy_key \
               ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
@@ -121,7 +121,7 @@ jobs:
                docker-compose pull && \
                docker-compose up -d && \
                docker image prune -f'
-          
+
           rm deploy_key
 
       - name: Health Check

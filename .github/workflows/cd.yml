@@ -188,7 +188,7 @@ jobs:
           echo "Deploying to staging: $STAGING_HOST"
           echo "${{ secrets.STAGING_SSH_KEY }}" > deploy_key
           chmod 600 deploy_key
-          
+
           ssh -o StrictHostKeyChecking=no \
               -i deploy_key \
               $STAGING_USER@$STAGING_HOST \
@@ -197,7 +197,7 @@ jobs:
                docker pull ghcr.io/${{ github.repository }}:staging-${{ github.sha }} && \
                docker-compose up -d app && \
                docker image prune -f'
-          
+
           rm deploy_key
 
       - name: Health check staging
@@ -257,7 +257,7 @@ jobs:
         run: |
           echo "${{ secrets.SERVER_SSH_KEY }}" > deploy_key
           chmod 600 deploy_key
-          
+
           ssh -o StrictHostKeyChecking=no \
               -i deploy_key \
               $SERVER_USER@$SERVER_HOST \
@@ -266,7 +266,7 @@ jobs:
                docker-compose pull && \
                docker-compose up -d && \
                docker image prune -f'
-          
+
           rm deploy_key
 
       - name: Production health check
