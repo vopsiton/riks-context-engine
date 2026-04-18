@@ -2,8 +2,8 @@
 
 > Everything you need to start developing, testing, and contributing to Rik Context Engine.
 
-**Audience:** Contributors and extension developers  
-**Python:** 3.10+  
+**Audience:** Contributors and extension developers
+**Python:** 3.10+
 **License:** AGPL-3.0
 
 ---

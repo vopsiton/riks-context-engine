@@ -6,11 +6,7 @@ import tempfile
 from datetime import datetime, timezone
 
 import pytest
-import yaml
-
 from riks_context_engine.memory.episodic import EpisodicMemory
-from riks_context_engine.memory.semantic import SemanticMemory
-from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.export import (
     SCHEMA_VERSION,
     MemoryFormat,
@@ -19,6 +15,8 @@ from riks_context_engine.memory.export import (
     import_to_memory,
     parse_manifest,
 )
+from riks_context_engine.memory.procedural import ProceduralMemory
+from riks_context_engine.memory.semantic import SemanticMemory
 
 
 def _temp_json_path():
@@ -118,7 +116,12 @@ class TestDumpAndParse:
 
     def test_schema_version_check_rejects_mismatched(self):
         bad_data = {
-            "metadata": {"schema_version": "99.0", "exported_at": "2026-01-01T00:00:00Z", "tool": "test", "export_id": "abc"},
+            "metadata": {
+                "schema_version": "99.0",
+                "exported_at": "2026-01-01T00:00:00Z",
+                "tool": "test",
+                "export_id": "abc",
+            },
             "episodic": [],
             "semantic": [],
             "procedural": [],

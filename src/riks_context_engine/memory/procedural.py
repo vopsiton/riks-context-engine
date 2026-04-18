@@ -1,10 +1,9 @@
 """Procedural memory - skills, workflows, how-to knowledge."""
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
-import json
 
 
 @dataclass
@@ -125,10 +124,13 @@ class ProceduralMemory:
         """Find procedures matching a query string."""
         q = query.lower()
         matches = [
-            p for p in self._procedures.values()
-            if (q in p.name.lower() or
-                q in p.description.lower() or
-                any(q in (t or "") for t in p.tags))
+            p
+            for p in self._procedures.values()
+            if (
+                q in p.name.lower()
+                or q in p.description.lower()
+                or any(q in (t or "") for t in p.tags)
+            )
         ]
         matches.sort(key=lambda p: (p.use_count, p.success_rate), reverse=True)
         return matches

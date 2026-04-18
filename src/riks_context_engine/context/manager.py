@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-
 # -------------------------------------------------------------------
 # Importance Scorer
 # -------------------------------------------------------------------
+
 
 class ImportanceScorer:
     """Scores message importance based on content analysis.
@@ -47,8 +47,12 @@ class ImportanceScorer:
     ]
 
     TOOL_RESULT_INDICATORS = [
-        "tool_use", "tool_call", "function_call",
-        "<function>", "<tool>", "```output",
+        "tool_use",
+        "tool_call",
+        "function_call",
+        "<function>",
+        "<tool>",
+        "```output",
     ]
 
     @classmethod
@@ -70,7 +74,12 @@ class ImportanceScorer:
         }
 
         # Weighted average
-        weights = {"user_mentions": 0.35, "new_information": 0.25, "decisions": 0.25, "tool_result": 0.15}
+        weights = {
+            "user_mentions": 0.35,
+            "new_information": 0.25,
+            "decisions": 0.25,
+            "tool_result": 0.15,
+        }
         overall = sum(dims[k] * weights[k] for k in weights)
 
         return (round(overall, 3), dims)
@@ -118,6 +127,7 @@ class ImportanceScorer:
 # -------------------------------------------------------------------
 # Context Message & Stats
 # -------------------------------------------------------------------
+
 
 @dataclass
 class ContextMessage:
@@ -167,9 +177,9 @@ TOKEN_BUFFER_PER_SIDE = 512  # Reserve buffer on each side
 
 # Priority tier definitions
 TIER_0_PROTECTED = 0  # System instructions, critical config
-TIER_1_HIGH = 1      # User preferences, tool results, decisions
-TIER_2_MEDIUM = 2    # Regular conversation
-TIER_3_LOW = 3       # Older, low-importance messages
+TIER_1_HIGH = 1  # User preferences, tool results, decisions
+TIER_2_MEDIUM = 2  # Regular conversation
+TIER_3_LOW = 3  # Older, low-importance messages
 
 TIERS = {
     0: "protected",
@@ -177,7 +187,6 @@ TIERS = {
     2: "medium",
     3: "low",
 }
-
 
 
 class ContextWindowManager:
@@ -305,8 +314,9 @@ class ContextWindowManager:
     def _contains_non_latin(self, text: str) -> bool:
         """Check if text contains non-Latin characters."""
         import re
+
         # CJK, Arabic, Cyrillic, etc.
-        return bool(re.search(r'[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff]', text))
+        return bool(re.search(r"[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff]", text))
 
     def _update_stats(self) -> None:
         """Update context statistics."""
@@ -328,7 +338,9 @@ class ContextWindowManager:
             return
 
         prune_targets: list[ContextMessage] = []
-        tokens_to_free = abs(self.tokens_remaining()) + (self.usable_tokens // 10)  # Free 10% buffer
+        tokens_to_free = abs(self.tokens_remaining()) + (
+            self.usable_tokens // 10
+        )  # Free 10% buffer
 
         # Collect candidates: non-protected, non-grounding, not tier 0
         for msg in self.messages:
@@ -384,9 +396,10 @@ class ContextWindowManager:
 
         # Ensure grounding messages are present if any were added
         grounding_messages = [m for m in self.messages if m.is_grounding]
-        grounding_lost = bool(grounding_messages and not any(
-            m.is_grounding and not m.is_pruned for m in self.messages
-        ))
+        grounding_lost = bool(
+            grounding_messages
+            and not any(m.is_grounding and not m.is_pruned for m in self.messages)
+        )
 
         # Check for consecutive same-role messages (unusual but sometimes valid)
         consecutive_breaks = 0

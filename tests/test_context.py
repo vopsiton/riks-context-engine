@@ -1,16 +1,13 @@
 """Tests for context module."""
 
-import pytest
 from datetime import datetime, timezone
 
 from riks_context_engine.context.manager import (
+    CHAR_PER_TOKEN,
+    TOKEN_BUFFER_PER_SIDE,
     ContextMessage,
     ContextWindowManager,
-    ContextStats,
     ImportanceScorer,
-    TIERS,
-    TOKEN_BUFFER_PER_SIDE,
-    CHAR_PER_TOKEN,
 )
 
 
@@ -38,10 +35,7 @@ class TestContextWindowManager:
     def test_grounding_message_flag(self):
         mgr = ContextWindowManager(max_tokens=10_000)
         msg = mgr.add(
-            role="system",
-            content="User prefers short replies",
-            importance=0.9,
-            is_grounding=True
+            role="system", content="User prefers short replies", importance=0.9, is_grounding=True
         )
         assert msg.is_grounding is True
 
@@ -78,7 +72,7 @@ class TestContextWindowManager:
             role="system",
             content="User preferences: short replies",
             importance=0.9,
-            is_grounding=True
+            is_grounding=True,
         )
         # Add lots of other content
         for i in range(30):
@@ -134,10 +128,7 @@ class TestContextWindowManager:
         """Tier 0 messages should never be pruned."""
         mgr = ContextWindowManager(max_tokens=1000)
         protected = mgr.add(
-            role="system",
-            content="Critical system prompt",
-            importance=0.5,
-            priority_tier=0
+            role="system", content="Critical system prompt", importance=0.5, priority_tier=0
         )
         # Fill with low priority content
         for i in range(50):
@@ -259,6 +250,7 @@ class TestTokenEstimation:
     def test_buffer_per_side_constant(self):
         assert TOKEN_BUFFER_PER_SIDE == 512
 
+
 class TestImportanceScorer:
     def test_score_decision_content(self):
         """Decision patterns should score high on decisions dimension."""
@@ -274,7 +266,9 @@ class TestImportanceScorer:
 
     def test_score_new_info_tool_result(self):
         """Tool results should score high on tool_result dimension."""
-        score, dims = ImportanceScorer.score("Here's your command output: 127.0.0.1 connected", "tool")
+        score, dims = ImportanceScorer.score(
+            "Here's your command output: 127.0.0.1 connected", "tool"
+        )
         assert dims["tool_result"] > 0.0
 
     def test_score_low_for_casual(self):
@@ -289,7 +283,9 @@ class TestImportanceScorer:
 
     def test_code_error_new_info(self):
         """Code errors should trigger new_information scoring."""
-        score, dims = ImportanceScorer.score("TypeError at line 42: cannot read property of undefined", "assistant")
+        score, dims = ImportanceScorer.score(
+            "TypeError at line 42: cannot read property of undefined", "assistant"
+        )
         assert dims["new_information"] >= 0.0
 
 
@@ -316,7 +312,7 @@ class TestPruningRecommendation:
         # Fill to ~70%: 70% of 10000 = 7000 tokens. Each ~1000 chars = ~250 tokens
         # Need ~28 messages of 1000 chars each
         for i in range(30):
-            mgr.add(role="user", content=f"x" * 1000, importance=0.3)
+            mgr.add(role="user", content="x" * 1000, importance=0.3)
         rec = mgr.get_pruning_recommendation()
         # After pruning, usage should be managed; just verify it returns valid structure
         assert rec["level"] in ("none", "advisory", "recommended", "critical")
@@ -343,7 +339,9 @@ class TestAutoScoreAndAdd:
 
     def test_auto_scores_preferences(self):
         mgr = ContextWindowManager(max_tokens=50_000)
-        msg = mgr.auto_score_and_add(role="user", content="I prefer concise responses, never use emojis")
+        msg = mgr.auto_score_and_add(
+            role="user", content="I prefer concise responses, never use emojis"
+        )
         assert msg.importance_dims["user_mentions"] > 0.0
 
 

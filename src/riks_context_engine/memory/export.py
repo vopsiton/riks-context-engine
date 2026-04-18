@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 SCHEMA_VERSION = "1.0"
 
@@ -206,7 +205,9 @@ def dump_manifest(manifest: ExportManifest, format: MemoryFormat, path: Path | N
     if format == MemoryFormat.JSON:
         content = json.dumps(data, indent=2, ensure_ascii=False)
     else:
-        content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        content = yaml.safe_dump(
+            data, default_flow_style=False, sort_keys=False, allow_unicode=True
+        )
 
     if path:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -245,6 +246,7 @@ def _check_schema_compat(ver: str) -> None:
 
 
 # --- Import helpers ---
+
 
 def _deserialize_episodic(data: dict[str, Any]) -> dict[str, Any]:
     return {
