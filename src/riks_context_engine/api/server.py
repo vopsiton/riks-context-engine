@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import os
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime
+from threading import Lock
 from typing import Annotated, AsyncGenerator, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from riks_context_engine.memory.episodic import EpisodicMemory
@@ -34,6 +37,92 @@ class ChatResponse(BaseModel):
 
 
 _MODELS = ["gemma4-31b-it", "qwen3.5-9b", "gemma-4-31b", "minimax-m2.7"]
+
+# ─── Rate Limiting ─────────────────────────────────────────────────────────────
+_RATE_LIMIT_REQUESTS = int(os.environ.get("RATE_LIMIT_REQUESTS", "100"))
+_RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))  # seconds
+
+# Per-IP request tracking: {ip: [(timestamp, count)]}
+_ip_request_log: dict[str, list[tuple[float, int]]] = defaultdict(list)
+_ip_lock = Lock()
+
+
+
+def _get_client_ip(request: Request) -> str:
+    """"Extract client IP, checking X-Forwarded-For first."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(ip: str) -> tuple[bool, int, int]:
+    """Check if IP is within rate limit.
+
+
+    Returns (allowed, remaining, reset_seconds).
+    """
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW
+
+    with _ip_lock:
+        # Prune old entries
+        _ip_request_log[ip] = [
+            (ts, cnt) for ts, cnt in _ip_request_log[ip] if ts > window_start
+        ]
+        entries = _ip_request_log[ip]
+
+        total = sum(cnt for _, cnt in entries)
+        remaining = max(0, _RATE_LIMIT_REQUESTS - total)
+
+        if remaining == 0:
+            oldest = min(ts for ts, _ in entries) if entries else now
+            reset_seconds = int(oldest + _RATE_LIMIT_WINDOW - now)
+            return False, 0, max(1, reset_seconds)
+
+        return True, remaining - 1, _RATE_LIMIT_WINDOW
+
+
+def _record_request(ip: str) -> None:
+    """Record a request for rate limiting."""
+    now = time.time()
+    with _ip_lock:
+        _ip_request_log[ip].append((now, 1))
+
+
+
+class RateLimitMiddleware:
+    """FastAPI middleware for per-IP rate limiting."""
+
+
+    async def __call__(self, request: Request, call_next):
+        # Skip rate limiting for health endpoint
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        ip = _get_client_ip(request)
+        allowed, remaining, reset = _check_rate_limit(ip)
+
+        if not allowed:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too Many Requests"},
+                headers={
+                    "X-RateLimit-Limit": str(_RATE_LIMIT_REQUESTS),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(reset),
+                    "Retry-After": str(reset),
+                },
+            )
+
+
+        _record_request(ip)
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(_RATE_LIMIT_REQUESTS)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset)
+        return response
+
 
 # Module-level memory instances (set on startup via lifespan)
 _episodic_memory: EpisodicMemory | None = None
@@ -82,6 +171,9 @@ app.add_middleware(
     CORSMiddleware,
     **_build_cors_config(),
 )
+
+app.add_middleware(RateLimitMiddleware)
+
 
 
 @app.get("/health")
