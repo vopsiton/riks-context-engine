@@ -1,8 +1,11 @@
 """Self-reflection analyzer - learn from mistakes and successes."""
 
+import json
+import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 @dataclass
@@ -106,10 +109,45 @@ class ReflectionAnalyzer:
     was missing.
     """
 
-    def __init__(self, semantic_memory=None):  # type: ignore[no-untyped-def]
+    def __init__(self, semantic_memory=None, storage_path: str | None = None):  # type: ignore[no-untyped-def]
         self.semantic_memory = semantic_memory
         self._lessons: dict[str, Lesson] = {}
         self._mistake_counts: dict[str, int] = {}
+        self.storage_path = storage_path or os.environ.get(
+            "REFLECTION_STORAGE", "data/lessons.json"
+        )
+        self.load()
+
+    def save(self) -> None:
+        """Persist active lessons to disk."""
+        active = [l for l in self._lessons.values() if not l.resolved]
+        data = {
+            "lessons": [asdict(l) for l in active],
+            "mistake_counts": self._mistake_counts,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        }
+        Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(self.storage_path, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+
+
+    def load(self) -> None:
+        """Load lessons from disk if available."""
+        if not os.path.exists(self.storage_path):
+            return
+        try:
+            with open(self.storage_path) as f:
+                data = json.load(f)
+            for l_dict in data.get("lessons", []):
+                # Convert datetime strings back
+                for dt_field in ("first_seen", "last_seen"):
+                    if isinstance(l_dict.get(dt_field), str):
+                        l_dict[dt_field] = datetime.fromisoformat(l_dict[dt_field])
+                lesson = Lesson(**l_dict)
+                self._lessons[lesson.id] = lesson
+            self._mistake_counts = data.get("mistake_counts", {})
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass  # Ignore corrupt files
 
     def analyze(self, interaction_id: str, conversation: list[dict]) -> ReflectionReport:
         """Analyze an interaction and generate a reflection report."""
@@ -200,6 +238,7 @@ class ReflectionAnalyzer:
                 existing.last_seen = datetime.now(timezone.utc)
                 return
         self._lessons[lesson.id] = lesson
+        self.save()
 
     def consult_before_task(self, task_description: str) -> list[Lesson]:
         """Before starting a task, check for related past lessons."""
