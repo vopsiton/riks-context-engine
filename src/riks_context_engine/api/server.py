@@ -50,17 +50,6 @@ def _get_allowed_origins() -> list[str]:
     return [o.strip() for o in origins_env.split(",") if o.strip()]
 
 
-def _build_cors_config() -> dict[str, list[str] | bool]:
-    """Build CORS middleware configuration from environment."""
-    origins = _get_allowed_origins()
-    return {
-        "allow_origins": origins,
-        "allow_credentials": True,
-        "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Authorization", "Content-Type", "X-Request-ID"],
-    }
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _episodic_memory, _semantic_memory, _procedural_memory
@@ -81,7 +70,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    **_build_cors_config(),
+    allow_origins=_get_allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 
 
