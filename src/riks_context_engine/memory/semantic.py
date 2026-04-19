@@ -216,7 +216,6 @@ class SemanticMemory:
     def get(self, entry_id: str) -> SemanticEntry | None:
         """Get entry by ID, incrementing access count (thread-safe)."""
         with self._write_lock:
-            data = None
             with self._conn() as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
@@ -232,7 +231,6 @@ class SemanticMemory:
                     "UPDATE semantic_entries SET access_count = ?, last_accessed = ? WHERE id = ?",
                     (data["access_count"], data["last_accessed"], entry_id),
                 )
-                conn.commit()
             return self._dict_to_entry(data)
 
     def query(
