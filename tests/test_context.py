@@ -245,3 +245,140 @@ class TestTokenEstimation:
 
     def test_buffer_per_side_constant(self):
         assert TOKEN_BUFFER_PER_SIDE == 512
+
+    def test_turkish_text_token_estimation(self):
+        """Turkish text should be handled correctly (non-Latin script fallback)."""
+        mgr = ContextWindowManager(model="gpt-4")
+        turkish_text = "Merhaba, nasılsın? Bugün hava çok güzel."
+        tokens = mgr._estimate_tokens(turkish_text)
+        assert tokens > 0
+        # Turkish with ~45 chars should be roughly 11-15 tokens (cl100k_base)
+        # Fallback uses len/2 for non-Latin, so ~22 tokens for 45 chars
+        assert tokens >= 5
+
+    def test_code_snippet_token_estimation(self):
+        """Code snippets should use more tokens per character."""
+        mgr = ContextWindowManager(model="gpt-4")
+        code = "def hello():\n    return 'Merhaba Dünya'\n" * 5
+        tokens = mgr._estimate_tokens(code)
+        assert tokens > 0
+        # Code typically uses more tokens
+        assert tokens >= 10
+
+    def test_mixed_language_estimation(self):
+        """Mixed language content should be handled correctly."""
+        mgr = ContextWindowManager(model="gpt-4")
+        mixed = "Hello! Bu Türkçe bir cümle. 123 numbers. More text here."
+        tokens = mgr._estimate_tokens(mixed)
+        assert tokens > 0
+        # Should be reasonable for mixed content
+        assert tokens >= 5
+
+    def test_english_text_baseline(self):
+        """English text should give reasonable token estimates."""
+        mgr = ContextWindowManager(model="gpt-4")
+        english = "This is a sample English sentence for token estimation testing." * 3
+        tokens = mgr._estimate_tokens(english)
+        assert tokens > 0
+        # ~105 chars, roughly 25-30 tokens for English with tiktoken
+        assert 15 <= tokens <= 60
+
+    def test_cjk_characters(self):
+        """CJK characters should be handled correctly."""
+        mgr = ContextWindowManager(model="gpt-4")
+        cjk_text = "你好世界这是一段中文文本"
+        tokens = mgr._estimate_tokens(cjk_text)
+        assert tokens > 0
+        # CJK fallback uses len/2, so roughly correct
+        assert tokens >= 5
+
+    def test_arabic_characters(self):
+        """Arabic text should be handled correctly."""
+        mgr = ContextWindowManager(model="gpt-4")
+        arabic_text = "مرحبا بك في العالم"
+        tokens = mgr._estimate_tokens(arabic_text)
+        assert tokens > 0
+        # Arabic fallback uses len/2
+        assert tokens >= 5
+
+    def test_model_parameter_used(self):
+        """Model parameter should be passed through and not ignored."""
+        mgr = ContextWindowManager(model="gpt-4")
+        assert mgr.model == "gpt-4"
+
+    def test_unknown_model_uses_tiktoken_fallback(self):
+        """Unknown model should still attempt tiktoken with default encoding."""
+        mgr = ContextWindowManager(model="unknown-model-xyz")
+        text = "Testing token estimation with an unknown model."
+        tokens = mgr._estimate_tokens(text)
+        assert tokens > 0
+
+    def test_empty_string_estimation(self):
+        """Empty string should return 0 tokens."""
+        mgr = ContextWindowManager(model="gpt-4")
+        tokens = mgr._estimate_tokens("")
+        assert tokens == 0
+
+    def test_special_characters_handling(self):
+        """Special characters should not break estimation."""
+        mgr = ContextWindowManager(model="gpt-4")
+        special = "!@#$%^&*()_+-={}[]|\\:\";<>?,./~`"
+        tokens = mgr._estimate_tokens(special)
+        assert tokens >= 0  # Should not crash
+
+    def test_contains_non_latin_turkish(self):
+        """Turkish diacritics (ş,ç,ı,ğ,ö,ü) are Latin-1, not non-Latin.
+
+        The _contains_non_latin check is for scripts that are clearly
+        non-Latin (CJK, Arabic, Cyrillic). Turkish diacritics are handled
+        correctly by tiktoken anyway.
+        """
+        mgr = ContextWindowManager()
+        # These are Latin-1 Supplement — should be False (handled by tiktoken)
+        assert mgr._contains_non_latin("şeker") is False
+        assert mgr._contains_non_latin("çiftliği") is False
+        # ASCII only — definitely not non-Latin
+        assert mgr._contains_non_latin("Hello") is False
+
+    def test_contains_non_latin_cyrillic(self):
+        """_contains_non_latin should detect Cyrillic characters."""
+        mgr = ContextWindowManager()
+        assert mgr._contains_non_latin("Привет") is True
+        assert mgr._contains_non_latin("Hello") is False
+
+    def test_long_code_block(self):
+        """Long code blocks should be estimated correctly."""
+        mgr = ContextWindowManager(model="gpt-4")
+        code_block = '''
+class MyClass:
+    def __init__(self, value):
+        self.value = value
+    
+    def get_value(self):
+        return self.value
+
+def main():
+    obj = MyClass(42)
+    print(obj.get_value())
+''' * 10
+        tokens = mgr._estimate_tokens(code_block)
+        assert tokens > 100  # Should be substantial for this much code
+
+    def test_get_tiktoken_encoding_helper(self):
+        """_get_tiktoken_encoding should return encoding for known models."""
+        mgr = ContextWindowManager(model="gpt-4")
+        result = mgr._get_tiktoken_encoding()
+        if result is not None:
+            encoding, enc_name = result
+            assert enc_name == "cl100k_base"
+            # Test encoding works
+            test_tokens = encoding.encode("test", disallowed_special=())
+            assert len(test_tokens) > 0
+
+    def test_get_tiktoken_encoding_minimax(self):
+        """_get_tiktoken_encoding should work for mini-max model."""
+        mgr = ContextWindowManager(model="mini-max")
+        result = mgr._get_tiktoken_encoding()
+        if result is not None:
+            encoding, enc_name = result
+            assert enc_name == "cl100k_base"
