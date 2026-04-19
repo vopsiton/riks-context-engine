@@ -55,7 +55,7 @@ def _build_cors_config() -> dict[str, list[str] | bool]:
     return {
         "allow_origins": origins,
         "allow_credentials": True,
-        "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
         "allow_headers": ["Authorization", "Content-Type", "X-Request-ID"],
     }
 
