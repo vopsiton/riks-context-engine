@@ -41,6 +41,25 @@ _semantic_memory: SemanticMemory | None = None
 _procedural_memory: ProceduralMemory | None = None
 
 
+def _get_allowed_origins() -> list[str]:
+    """Parse ALLOWED_ORIGINS env var into a list of origins."""
+    origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+    if not origins_env:
+        return ["http://localhost:3000", "http://localhost:8080"]
+    return [o.strip() for o in origins_env.split(",") if o.strip()]
+
+
+def _build_cors_config() -> dict[str, list[str] | bool]:
+    """Build CORS middleware configuration from environment."""
+    origins = _get_allowed_origins()
+    return {
+        "allow_origins": origins,
+        "allow_credentials": True,
+        "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Authorization", "Content-Type", "X-Request-ID"],
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _episodic_memory, _semantic_memory, _procedural_memory
@@ -61,10 +80,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **_build_cors_config(),
 )
 
 
