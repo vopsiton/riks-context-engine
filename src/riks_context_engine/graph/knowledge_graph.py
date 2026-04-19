@@ -392,6 +392,11 @@ class KnowledgeGraph:
             )
             return self._keyword_search(query, top_k)
 
+        # Store embedder reference so _get_entity_embedding uses the same one.
+        # This avoids dimension mismatches when a test-provided FakeEmbedder
+        # has different dimensionality than the global get_embedder().
+        self._emb_embedder = emb_service
+
         scored: list[tuple[Entity, float]] = []
         for entity in self._entities.values():
             entity_vec = self._get_entity_embedding(entity)
@@ -416,7 +421,7 @@ class KnowledgeGraph:
         text = ", ".join(parts)
 
         try:
-            result = get_embedder().embed(text)
+            result = self._emb_embedder.embed(text)
             vec: list[float] | None = getattr(result, "embedding", None)
             setattr(self, cache_key, vec)
             return vec
