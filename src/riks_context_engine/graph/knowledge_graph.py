@@ -1,6 +1,7 @@
 """Knowledge graph - entities and their relationships with semantic search."""
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -10,6 +11,9 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 from riks_context_engine.memory.embedding import get_embedder
+
+logger = logging.getLogger(__name__)
+
 
 
 class EmbedderProtocol(Protocol):
@@ -381,9 +385,18 @@ class KnowledgeGraph:
                 query_vec = query_emb.embedding
             else:
                 query_vec = query_emb  # fallback for raw list responses
-        except Exception:
-            # If embedding service unavailable, fall back to keyword match
+        except Exception as exc:
+            logger.warning(
+                "Embedder failed (%s), falling back to keyword search: %s",
+                type(exc).__name__,
+                exc,
+            )
             return self._keyword_search(query, top_k)
+
+        # Store embedder reference so _get_entity_embedding uses the same one.
+        # This avoids dimension mismatches when a test-provided FakeEmbedder
+        # has different dimensionality than the global get_embedder().
+        self._emb_embedder = emb_service
 
         scored: list[tuple[Entity, float]] = []
         for entity in self._entities.values():
@@ -409,7 +422,7 @@ class KnowledgeGraph:
         text = ", ".join(parts)
 
         try:
-            result = get_embedder().embed(text)
+            result = self._emb_embedder.embed(text)
             vec: list[float] | None = getattr(result, "embedding", None)
             setattr(self, cache_key, vec)
             return vec

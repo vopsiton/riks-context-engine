@@ -141,10 +141,12 @@ class TestSemanticSearch:
 
 class FakeEmbedder:
     """Fake embedder that returns predictable vectors for testing."""
+    # Match standard embedding dimension used by real embedders (e.g. Ollama nomic-embed-text)
+    DIM = 384
 
     def embed(self, text: str):
-        # Return a 3-element vector based on text content
-        vec = [hash(text) % 100 / 100.0, len(text) / 20.0, ord(text[0]) / 127.0]
+        # Return a DIM-element vector with deterministic values
+        vec = [hash(f"{text}_{i}") % 100 / 100.0 for i in range(self.DIM)]
         return FakeEmbeddingResult(vec)
 
 
