@@ -90,6 +90,15 @@ class SemanticMemory:
                 "CREATE INDEX IF NOT EXISTS idx_semantic_predicate ON semantic_entries(predicate)"
             )
 
+    @staticmethod
+    def _escape_like(val: str) -> str:
+        """Escape LIKE special characters to treat them as literals.
+
+        LIKE wildcards: % (any chars), _ (single char)
+        Without escaping, user input like '50%' would match anything after '50'.
+        """
+        return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
     def add(
         self,
         subject: str,
@@ -172,28 +181,37 @@ class SemanticMemory:
     def query(
         self, subject: str | None = None, predicate: str | None = None
     ) -> list[SemanticEntry]:
-        """Query semantic memory by subject and/or predicate."""
+        """Query semantic memory by subject and/or predicate.
+
+        Uses parameterized queries to prevent SQL injection.
+        LIKE special characters (%, _) are escaped so user input is treated literally.
+        """
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             if subject and predicate:
                 rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE subject LIKE ? AND predicate LIKE ?",
-                    (f"%{subject}%", f"%{predicate}%"),
+                    "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE ? AND predicate LIKE ? ESCAPE ?",
+                    (f"%{self._escape_like(subject)}%", "\\", f"%{self._escape_like(predicate)}%", "\\"),
                 ).fetchall()
             elif subject:
                 rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE subject LIKE ?", (f"%{subject}%",)
+                    "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE ?",
+                    (f"%{self._escape_like(subject)}%", "\\"),
                 ).fetchall()
             elif predicate:
                 rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE predicate LIKE ?", (f"%{predicate}%",)
+                    "SELECT * FROM semantic_entries WHERE predicate LIKE ? ESCAPE ?",
+                    (f"%{self._escape_like(predicate)}%", "\\"),
                 ).fetchall()
             else:
                 rows = conn.execute("SELECT * FROM semantic_entries").fetchall()
         return [self._row_to_entry(r) for r in rows]
 
     def recall(self, query: str) -> list[SemanticEntry]:
-        """Semantic search across knowledge using keyword matching."""
+        """Semantic search across knowledge using keyword matching.
+
+        Uses parameterized LIKE with escaped wildcards to prevent injection.
+        """
         q = query.lower()
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
