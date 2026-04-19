@@ -10,7 +10,7 @@ from riks_context_engine.reflection.analyzer import (
 
 class TestReflectionAnalyzer:
     def test_init(self):
-        analyzer = ReflectionAnalyzer()
+        analyzer = ReflectionAnalyzer(storage_path=":memory:")
         assert analyzer.semantic_memory is None
         assert len(analyzer._lessons) == 0
 
@@ -95,7 +95,7 @@ class TestReflectionAnalyzer:
         assert analyzer.resolve_lesson("nonexistent") is False
 
     def test_get_active_lessons(self):
-        analyzer = ReflectionAnalyzer()
+        analyzer = ReflectionAnalyzer(storage_path=":memory:")
         analyzer._lessons["l1"] = Lesson(
             id="l1",
             category="general",
