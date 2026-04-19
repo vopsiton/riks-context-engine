@@ -158,7 +158,7 @@ class ContextWindowManager:
         """Check if context window needs pruning."""
         return self.tokens_remaining() < 0
 
-    def _get_tiktoken_encoding(self) -> tuple[" tiktoken.Encoding", str] | None:
+    def _get_tiktoken_encoding(self) -> tuple["tiktoken.Encoding", str] | None:
         """Get tiktoken encoding for the current model.
 
         Returns:
