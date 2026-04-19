@@ -9,7 +9,7 @@ from math import sqrt
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-from riks_context_engine.memory.embedding import EmbeddingResult, get_embedder
+from riks_context_engine.memory.embedding import get_embedder
 
 
 class EmbedderProtocol(Protocol):
