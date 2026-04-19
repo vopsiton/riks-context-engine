@@ -143,14 +143,28 @@ class SemanticMemory:
 
     def _dict_to_entry(self, d: dict) -> SemanticEntry:
         """Build a SemanticEntry from a plain dict."""
+        created_at_raw = d["created_at"]
+        last_accessed_raw = d["last_accessed"]
+        if not created_at_raw:
+            created_at = datetime.now(timezone.utc)
+        elif isinstance(created_at_raw, str):
+            created_at = datetime.fromisoformat(created_at_raw)
+        else:
+            created_at = created_at_raw
+        if not last_accessed_raw:
+            last_accessed = datetime.now(timezone.utc)
+        elif isinstance(last_accessed_raw, str):
+            last_accessed = datetime.fromisoformat(last_accessed_raw)
+        else:
+            last_accessed = last_accessed_raw
         return SemanticEntry(
             id=d["id"],
             subject=d["subject"],
             predicate=d["predicate"],
             object=d["object"],
             confidence=d["confidence"],
-            created_at=datetime.fromisoformat(d["created_at"]),
-            last_accessed=datetime.fromisoformat(d["last_accessed"]),
+            created_at=created_at,
+            last_accessed=last_accessed,
             access_count=d["access_count"],
             embedding=json.loads(d["embedding"]) if d["embedding"] else None,
         )
