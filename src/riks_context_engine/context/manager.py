@@ -4,6 +4,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,30 @@ class ContextWindowManager:
         self._update_stats()
         self._prune_if_needed()
         return msg
+
+    async def add_async(
+        self,
+        role: str,
+        content: str,
+        importance: float = 0.5,
+        is_grounding: bool = False,
+        priority_tier: int = 2,
+    ) -> ContextMessage:
+        """Async version of add() with asyncio.Lock for thread-safety.
+
+
+        Args:
+            role: Message role ("user", "assistant", "system")
+            content: Message text content
+            importance: Importance score 0.0-1.0 (higher = more important)
+            is_grounding: True for user preferences, active projects
+            priority_tier: 0-3, lower = more protected from pruning
+
+        Returns:
+            Created ContextMessage
+        """
+        async with asyncio.Lock():
+            return self.add(role, content, importance, is_grounding, priority_tier)
 
     def get_messages(self, include_pruned: bool = False) -> list[ContextMessage]:
         """Get messages in context window.
@@ -298,6 +323,19 @@ class ContextWindowManager:
             self.stats.last_prune_timestamp = datetime.now(timezone.utc)
 
         self._update_stats()
+
+    async def prune_async(self) -> int:
+        """Async version of forced prune with asyncio.Lock.
+
+
+        Returns:
+            Number of messages pruned
+        """
+        async with asyncio.Lock():
+            before = sum(1 for m in self.messages if not m.is_pruned)
+            self._prune_if_needed()
+            after = sum(1 for m in self.messages if not m.is_pruned)
+            return before - after
 
     def validate_coherence(self) -> bool:
         """Validate conversation coherence after pruning.
