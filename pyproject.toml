@@ -50,6 +50,7 @@ anthropic = ["anthropic>=0.18"]
 
 [project.scripts]
 riks = "riks_context_engine.cli.main:main"
+riks-mcp = "riks_context_engine.mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
