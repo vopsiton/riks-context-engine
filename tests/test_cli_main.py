@@ -1,6 +1,6 @@
 """Test CLI main module for coverage."""
+
 import pytest
-from io import StringIO
 
 
 class TestCLI:
@@ -9,6 +9,7 @@ class TestCLI:
     def test_main_version_flag(self, capsys):
         """Test riks --version outputs version."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "--version"]
@@ -19,6 +20,7 @@ class TestCLI:
     def test_main_no_args(self, capsys):
         """Test riks with no args shows help."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks"]
@@ -30,6 +32,7 @@ class TestCLI:
     def test_main_memory_stats(self, capsys):
         """Test riks memory stats."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "memory", "stats"]
@@ -40,6 +43,7 @@ class TestCLI:
     def test_main_memory_add(self, capsys):
         """Test riks memory add."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "memory", "add"]
@@ -50,6 +54,7 @@ class TestCLI:
     def test_main_memory_query(self, capsys):
         """Test riks memory query."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "memory", "query"]
@@ -60,6 +65,7 @@ class TestCLI:
     def test_main_context_stats(self, capsys):
         """Test riks context stats."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "context", "stats"]
@@ -70,6 +76,7 @@ class TestCLI:
     def test_main_context_prune(self, capsys):
         """Test riks context prune."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "context", "prune"]
@@ -80,6 +87,7 @@ class TestCLI:
     def test_main_context_clear(self, capsys):
         """Test riks context clear."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "context", "clear"]
@@ -90,6 +98,7 @@ class TestCLI:
     def test_main_task_command(self, capsys):
         """Test riks task <goal>."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "task", "test goal"]
@@ -100,6 +109,7 @@ class TestCLI:
     def test_main_reflection(self, capsys):
         """Test riks reflect --session."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "reflect", "--session", "test-session"]
@@ -110,6 +120,7 @@ class TestCLI:
     def test_main_unknown_command_exits_with_error(self, capsys):
         """Test riks with unknown command."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "unknown_cmd"]
@@ -119,6 +130,7 @@ class TestCLI:
     def test_main_memory_invalid_type(self, capsys):
         """Test riks memory with invalid type."""
         import sys
+
         from riks_context_engine.cli.main import main
 
         sys.argv = ["riks", "memory", "--type", "invalid", "add"]

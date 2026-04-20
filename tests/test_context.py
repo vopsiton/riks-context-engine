@@ -322,7 +322,7 @@ class TestTokenEstimation:
     def test_special_characters_handling(self):
         """Special characters should not break estimation."""
         mgr = ContextWindowManager(model="gpt-4")
-        special = "!@#$%^&*()_+-={}[]|\\:\";<>?,./~`"
+        special = '!@#$%^&*()_+-={}[]|\\:";<>?,./~`'
         tokens = mgr._estimate_tokens(special)
         assert tokens >= 0  # Should not crash
 
@@ -349,18 +349,21 @@ class TestTokenEstimation:
     def test_long_code_block(self):
         """Long code blocks should be estimated correctly."""
         mgr = ContextWindowManager(model="gpt-4")
-        code_block = '''
+        code_block = (
+            """
 class MyClass:
     def __init__(self, value):
         self.value = value
-    
+
     def get_value(self):
         return self.value
 
 def main():
     obj = MyClass(42)
     print(obj.get_value())
-''' * 10
+"""
+            * 10
+        )
         tokens = mgr._estimate_tokens(code_block)
         assert tokens > 100  # Should be substantial for this much code
 

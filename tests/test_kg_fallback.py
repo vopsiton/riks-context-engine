@@ -1,9 +1,6 @@
 """Tests for KnowledgeGraph embedder fallback logging (issue #52)."""
 
-import logging
 from unittest.mock import patch
-
-import pytest
 
 from riks_context_engine.graph.knowledge_graph import EntityType, KnowledgeGraph
 
@@ -40,10 +37,13 @@ class TestKnowledgeGraphFallbackLogging:
             all_call_args = mock_logger.warning.call_args
             call_args = all_call_args[0]
             # call_args = (format_str, exc_type_name, exc_value)
-            assert "falling back to keyword search" in call_args[0], \
+            assert "falling back to keyword search" in call_args[0], (
                 f"Format string mismatch: {call_args[0]!r}"
+            )
             assert len(call_args) == 3, f"Expected 3 args, got {len(call_args)}: {call_args!r}"
-            assert "RuntimeError" in str(call_args[1]), f"Expected RuntimeError, got {call_args[1]!r}"
+            assert "RuntimeError" in str(call_args[1]), (
+                f"Expected RuntimeError, got {call_args[1]!r}"
+            )
 
     def test_embedder_timeout_logs_warning(self):
         """When embedder times out, a WARNING should be logged before keyword fallback."""
@@ -58,4 +58,6 @@ class TestKnowledgeGraphFallbackLogging:
             call_args = mock_logger.warning.call_args[0]
             assert "falling back to keyword search" in call_args[0]
             # call_args = (format_str, exc_type_name, exc_value)
-            assert "TimeoutError" in str(call_args[1]), f"Expected TimeoutError, got {call_args[1]!r}"
+            assert "TimeoutError" in str(call_args[1]), (
+                f"Expected TimeoutError, got {call_args[1]!r}"
+            )

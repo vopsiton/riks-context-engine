@@ -4,15 +4,14 @@ Covers AC-51-01 (10 thread concurrent write → 0 "Database is locked"),
 AC-51-02 (WAL mode enabled), AC-51-03 (context manager usage).
 """
 
-import tempfile
 import os
 import sqlite3
+import tempfile
 import threading
 import time
-import pytest
 
+from riks_context_engine.graph.knowledge_graph import EntityType, KnowledgeGraph, RelationshipType
 from riks_context_engine.memory.semantic import SemanticMemory
-from riks_context_engine.graph.knowledge_graph import KnowledgeGraph, EntityType, RelationshipType
 
 
 class TestThreadSafeSQLite:
@@ -139,7 +138,7 @@ class TestThreadSafeSQLite:
                     mem.add(
                         subject=f"high_contention_t{int(time.time() * 1000) % 1000}_{i}",
                         predicate="test",
-                        object=f"data",
+                        object="data",
                     )
             except sqlite3.OperationalError as e:
                 errors.append(str(e))

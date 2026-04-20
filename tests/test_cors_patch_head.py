@@ -1,9 +1,8 @@
 """Tests for Issue #49 — CORS PATCH/HEAD Methods."""
 
-import pytest
-from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.testclient import TestClient
 
 
 def _build_cors_config():

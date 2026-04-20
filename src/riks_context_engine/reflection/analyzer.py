@@ -130,7 +130,6 @@ class ReflectionAnalyzer:
         with open(self.storage_path, "w") as f:
             json.dump(data, f, indent=2, default=str)
 
-
     def load(self) -> None:
         """Load lessons from disk if available."""
         if not os.path.exists(self.storage_path):

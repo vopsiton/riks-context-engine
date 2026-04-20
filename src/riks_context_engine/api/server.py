@@ -47,9 +47,7 @@ def _ollama_chat(model_ui_name: str, message: str) -> str:
 
     payload = {
         "model": ollama_model,
-        "messages": [
-            {"role": "user", "content": message}
-        ],
+        "messages": [{"role": "user", "content": message}],
         "stream": False,
     }
 
@@ -87,9 +85,8 @@ _ip_request_log: dict[str, list[tuple[float, int]]] = defaultdict(list)
 _ip_lock = Lock()
 
 
-
 def _get_client_ip(request: Request) -> str:
-    """"Extract client IP, checking X-Forwarded-For first."""
+    """ "Extract client IP, checking X-Forwarded-For first."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -107,9 +104,7 @@ def _check_rate_limit(ip: str) -> tuple[bool, int, int]:
 
     with _ip_lock:
         # Prune old entries
-        _ip_request_log[ip] = [
-            (ts, cnt) for ts, cnt in _ip_request_log[ip] if ts > window_start
-        ]
+        _ip_request_log[ip] = [(ts, cnt) for ts, cnt in _ip_request_log[ip] if ts > window_start]
         entries = _ip_request_log[ip]
 
         total = sum(cnt for _, cnt in entries)
@@ -128,7 +123,6 @@ def _record_request(ip: str) -> None:
     now = time.time()
     with _ip_lock:
         _ip_request_log[ip].append((now, 1))
-
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -153,7 +147,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "Retry-After": str(reset),
                 },
             )
-
 
         _record_request(ip)
         response = await call_next(request)
@@ -212,7 +205,6 @@ app.add_middleware(
 )
 
 app.add_middleware(RateLimitMiddleware)
-
 
 
 @app.get("/health")

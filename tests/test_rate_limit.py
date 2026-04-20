@@ -1,7 +1,6 @@
 """Test API rate limiting."""
-import pytest
-import time
-from unittest.mock import patch, MagicMock
+
+from unittest.mock import MagicMock, patch
 
 
 class TestRateLimiting:
@@ -13,6 +12,7 @@ class TestRateLimiting:
             _RATE_LIMIT_REQUESTS,
             _RATE_LIMIT_WINDOW,
         )
+
         assert _RATE_LIMIT_REQUESTS == 100
         assert _RATE_LIMIT_WINDOW == 60
 
@@ -71,7 +71,7 @@ class TestRateLimiting:
 
     def test_record_request_appends(self):
         """_record_request adds entry to log."""
-        from riks_context_engine.api.server import _record_request, _ip_request_log
+        from riks_context_engine.api.server import _ip_request_log, _record_request
 
         ip = "record-test-ip"
         _record_request(ip)
@@ -85,7 +85,9 @@ class TestRateLimiting:
         with patch.dict("os.environ", {"RATE_LIMIT_REQUESTS": "50", "RATE_LIMIT_WINDOW": "30"}):
             # Re-import to pick up new env values
             import importlib
+
             import riks_context_engine.api.server as server_module
+
             importlib.reload(server_module)
 
             assert server_module._RATE_LIMIT_REQUESTS == 50

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,7 +21,6 @@ from riks_context_engine.mcp.protocol import (
 )
 from riks_context_engine.mcp.schemas import TOOL_SCHEMAS, get_tool_schema, list_tools
 from riks_context_engine.mcp.server import MCPServer, _format_result
-
 
 # ---------------------------------------------------------------------------
 # Protocol layer
@@ -180,9 +178,7 @@ class TestMCPServer:
         assert "added" in text
 
     def test_context_get_summary(self, server: MCPServer) -> None:
-        result = server.handle_tools_call(
-            {"name": "context_get_summary", "arguments": {}}
-        )
+        result = server.handle_tools_call({"name": "context_get_summary", "arguments": {}})
         assert "content" in result
         text = result["content"][0]["text"]
         # Should contain token stats
@@ -254,9 +250,7 @@ class TestMCPIntegration:
             pass
         proc.wait(timeout=5)
 
-    def _send(
-        self, proc: subprocess.Popen, request: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    def _send(self, proc: subprocess.Popen, request: dict[str, Any]) -> dict[str, Any] | None:
         line = json.dumps(request) + "\n"
         proc.stdin.write(line)
         proc.stdin.flush()

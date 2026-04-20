@@ -49,7 +49,7 @@
 def test_sql_injection_safe_like():
     """
     Fail senaryosu: Kötü niyetli LIKE input'u DB'yi okuyabilir.
-    
+
     Input: "'; SELECT * FROM sqlite_master; --"
     Expected: Parametre olarak gönderilir, SQL çalışmaz
     """
@@ -57,7 +57,7 @@ def test_sql_injection_safe_like():
     # Normal input
     result = memory.query(subject="test", predicate="is")
     assert isinstance(result, list)
-    
+
     # Injection attempt — should be treated as literal string
     result = memory.query(subject="'; DROP TABLE users; --", predicate="test")
     # Should NOT raise, should return empty list
@@ -68,10 +68,10 @@ def test_sql_injection_safe_like():
 def test_sql_injection_unsafe_pattern_rejected():
     """
     Code review ile yakalanmalı:
-    
+
     KÖTÜ (reject):
         cursor.execute(f"SELECT * FROM table WHERE id = {user_input}")
-    
+
     İYİ (accept):
         cursor.execute("SELECT * FROM table WHERE id = ?", (user_input,))
     """
@@ -137,7 +137,7 @@ import sqlite3
 def test_concurrent_writes_locked():
     """
     FAIL: 10 thread aynı anda write yapıyor.
-    
+
     Hata: sqlite3.OperationalError: database is locked
     """
     errors = []
@@ -150,11 +150,11 @@ def test_concurrent_writes_locked():
             errors.append((thread_id, str(e)))
         finally:
             conn.close()
-    
+
     threads = [threading.Thread(target=writer, args=(i,)) for i in range(10)]
     for t in threads: t.start()
     for t in threads: t.join()
-    
+
     # Expected: 0 errors with proper locking
     assert len(errors) == 0, f"Got errors: {errors}"
 
@@ -168,16 +168,16 @@ def test_wal_concurrent_reads():
     # Enable WAL
     with memory._conn() as conn:
         conn.execute("PRAGMA journal_mode=WAL")
-    
+
     results = []
     def reader(i):
         r = memory.query(subject="test")
         results.append(r)
-    
+
     threads = [threading.Thread(target=reader, args=(i,)) for i in range(5)]
     for t in threads: t.start()
     for t in threads: t.join()
-    
+
     assert len(results) == 5
 
 
@@ -188,10 +188,10 @@ def test_connection_cleanup():
     """
     import gc
     memory = SemanticMemory(db_path=":memory:")
-    
+
     for _ in range(100):
         memory.query(subject="test")
-    
+
     gc.collect()
     # Check for unclosed connections
     # Expected: 0 leaked connections
@@ -240,14 +240,14 @@ def test_connection_cleanup():
 def test_cors_patch_preflight_fails():
     """
     FAIL: PATCH method CORS'da yok.
-    
+
     Browser: OPTIONS /api/v1/memory/export
     Response: 405 Method Not Allowed
-    
+
     Expected: 204 + PATCH in allowed methods
     """
     import httpx
-    
+
     response = httpx.options(
         "http://localhost:8080/api/v1/memory/export",
         headers={
@@ -255,7 +255,7 @@ def test_cors_patch_preflight_fails():
             "Access-Control-Request-Method": "PATCH",
         }
     )
-    
+
     assert response.status_code == 204, f"Got {response.status_code}"
     assert "PATCH" in response.headers.get("Access-Control-Allow-Methods", "")
 
@@ -318,22 +318,22 @@ def test_cors_credentials():
 def test_token_estimation_english_fail():
     """
     FAIL: 1000 char İngilizce metin için estimation yanlış.
-    
+
     Gerçek: ~250 tokens (4 char/token)
     Estimation: 250 tokens
     Diff: 0% ✓
-    
+
     Ama 5000 char için:
     Gerçek: ~1250 tokens
     Estimation: 1250 tokens
     """
     from riks_context_engine.context.manager import ContextWindowManager
-    
+
     mgr = ContextWindowManager()
-    
+
     english_text = "This is a sample text for testing token estimation accuracy. " * 50
     estimated = mgr._estimate_tokens(english_text)
-    
+
     # tiktoken ile gerçek değeri bul (opsiyonel)
     # assert abs(estimated - actual) / actual <= 0.10
 
@@ -342,16 +342,16 @@ def test_token_estimation_english_fail():
 def test_token_estimation_turkish():
     """
     Türkçe'de char/token oranı daha yüksek.
-    
+
     "Merhaba dünya, nasılsın?" → 21 char
     Estimation: 21 / 4 = 5 tokens (yanlış!)
     Gerçek: ~12 tokens (Türkçe < 2 char/token)
     """
     mgr = ContextWindowManager()
-    
+
     turkish_text = "Merhaba dünya! Nasılsın? Bugün hava çok güzel."
     estimated = mgr._estimate_tokens(turkish_text)
-    
+
     # Check non-Latin detection
     assert mgr._contains_non_latin(turkish_text) == False  # Turkish uses Latin script
     # Actual: depends on model tokenizer
@@ -361,13 +361,13 @@ def test_token_estimation_turkish():
 def test_token_estimation_code():
     """Code blocks 1.3x multiplier almalı."""
     mgr = ContextWindowManager()
-    
+
     plain = "Hello world, this is a test message."
     code = "def hello(): print('hello world')"
-    
+
     tokens_plain = mgr._estimate_tokens(plain)
     tokens_code = mgr._estimate_tokens(code)
-    
+
     # Code should have higher token/char ratio
     # (but depends on actual code content)
     assert tokens_code >= tokens_plain
@@ -377,10 +377,10 @@ def test_token_estimation_code():
 def test_token_estimation_cjk():
     """Çince/Korece/Japonca: 2 char/token."""
     mgr = ContextWindowManager()
-    
+
     cjk_text = "你好世界これはテストです"  # ~20 chars
     estimated = mgr._estimate_tokens(cjk_text)
-    
+
     # Should detect CJK
     assert mgr._contains_non_latin(cjk_text) == True
     # Expected: 20 / 2 = 10 tokens
@@ -426,17 +426,17 @@ def test_token_estimation_cjk():
 def test_kg_embedder_timeout_fail():
     """
     FAIL: Embedder unavailable → exception fırlatıyor.
-    
+
     Expected: graceful fallback to keyword search
     """
     kg = KnowledgeGraph()
     kg.add_entity("Test Entity", EntityType.CONCEPT, {"desc": "test"})
-    
+
     # Mock embedder to raise
     original_embed = kg._get_entity_embedding
     def failing_embed(entity):
         raise TimeoutError("Embedder not responding")
-    
+
     # This should NOT raise
     results = kg.semantic_search("test query", top_k=5)
     assert isinstance(results, list)
@@ -446,22 +446,22 @@ def test_kg_embedder_timeout_fail():
 def test_kg_fallback_warning():
     """Warning log atılmalı."""
     import logging
-    
+
     class LogCapture(logging.Handler):
         def __init__(self):
             super().__init__()
             self.records = []
         def emit(self, record):
             self.records.append(record)
-    
+
     handler = LogCapture()
     logging.getLogger("riks_context_engine.graph").addHandler(handler)
-    
+
     kg = KnowledgeGraph()
     kg._get_entity_embedding = lambda e: (_ for _ in ()).throw(TimeoutError())
-    
+
     kg.semantic_search("test")
-    
+
     warning_msgs = [r.getMessage() for r in handler.records if r.levelname == "WARNING"]
     assert any("fallback" in m.lower() for m in warning_msgs)
 
@@ -472,13 +472,13 @@ def test_kg_keyword_fallback_results():
     kg = KnowledgeGraph()
     kg.add_entity("Vahit Server", EntityType.PERSON, {"role": "engineer"})
     kg.add_entity("Kubernetes", EntityType.CONCEPT, {"type": "orchestration"})
-    
+
     # Force keyword fallback
     def force_fallback(entity):
         raise Exception("Forced fallback")
-    
+
     results = kg.semantic_search("Kubernetes", top_k=3)
-    
+
     assert len(results) > 0
     assert any("Kubernetes" in str(r[0].name) for r in results)
 ```
@@ -523,7 +523,7 @@ def test_kg_keyword_fallback_results():
 def test_import_invalid_version_fail():
     """
     FAIL: Schema version 99.9 olan manifest kabul ediliyor.
-    
+
     Expected: ValueError, HTTP 400
     """
     manifest_json = json.dumps({
@@ -536,9 +536,9 @@ def test_import_invalid_version_fail():
         "semantic": [],
         "procedural": []
     })
-    
+
     from riks_context_engine.memory.export import parse_manifest
-    
+
     with pytest.raises(ValueError, match="Schema version mismatch"):
         parse_manifest(manifest_json, format="json")
 
@@ -551,7 +551,7 @@ def test_import_missing_required_field():
         "semantic": [],
         "procedural": []
     })
-    
+
     with pytest.raises(KeyError):
         parse_manifest(manifest_json, format="json")
 
@@ -569,7 +569,7 @@ def test_import_major_version_mismatch():
         "semantic": [],
         "procedural": []
     })
-    
+
     with pytest.raises(ValueError, match="Major version must match"):
         parse_manifest(manifest_json, format="json")
 
@@ -589,10 +589,10 @@ def test_import_valid_manifest():
         semantic=[],
         procedural=[]
     )
-    
+
     episodic = EpisodicMemory(storage_path=":memory:")
     imported = import_to_memory(manifest, episodic_memory=episodic)
-    
+
     assert imported["episodic"] == 1
 ```
 
@@ -641,7 +641,7 @@ def test_add_async_is_coroutine():
     """add_async() coroutine olmalı."""
     import inspect
     mgr = ContextWindowManager()
-    
+
     assert inspect.iscoroutinefunction(mgr.add_async)
 
 
@@ -649,10 +649,10 @@ def test_add_async_is_coroutine():
 async def test_add_async_behavior():
     """Async add = Sync add."""
     mgr = ContextWindowManager()
-    
+
     await mgr.add_async("user", "Hello world", importance=0.9)
     sync_result = mgr.add("user", "Hello world", importance=0.9)
-    
+
     # Should have same tokens
     assert mgr.messages[-1].tokens == sync_result.tokens
 
@@ -661,17 +661,17 @@ async def test_add_async_behavior():
 async def test_concurrent_adds_async():
     """
     FAIL: Concurrent async adds race condition.
-    
+
     10 coroutines aynı anda add_async() çağırıyor.
     Expected: Sıralı ekleme, 10 mesaj
     """
     mgr = ContextWindowManager()
-    
+
     async def add_msg(i):
         await mgr.add_async("user", f"Message {i}", importance=0.5)
-    
+
     await asyncio.gather(*[add_msg(i) for i in range(10)])
-    
+
     assert len(mgr.messages) == 10
 ```
 
@@ -714,7 +714,7 @@ async def test_concurrent_adds_async():
 def test_coverage_report_fail():
     """
     FAIL: export.py coverage düşük.
-    
+
     Run: pytest --cov=src --cov-report=term-missing
     Expected: export.py → 90%+
     """
@@ -724,7 +724,7 @@ def test_coverage_report_fail():
         capture_output=True,
         text=True
     )
-    
+
     # Check output for export.py coverage
     # assert "export.py" in output
     # assert "90%" in output
@@ -734,7 +734,7 @@ def test_coverage_report_fail():
 def test_parse_manifest_uncovered():
     """parse_manifest'ta uncovered branch var."""
     from riks_context_engine.memory.export import parse_manifest
-    
+
     # Invalid YAML (not dict)
     with pytest.raises(ValueError):
         parse_manifest("just a string", format="yaml")
@@ -782,16 +782,16 @@ import time
 def test_rate_limit_exceeded_fail():
     """
     FAIL: Rate limit aşılınca 200 dönüyor.
-    
+
     Expected: 429 Too Many Requests
     """
     client = httpx.Client(base_url="http://localhost:8080")
-    
+
     # Make 100 requests
     for i in range(100):
         r = client.get("/health")
         assert r.status_code == 200
-    
+
     # 101st should be blocked
     r = client.get("/health")
     assert r.status_code == 429, f"Expected 429, got {r.status_code}"
@@ -801,7 +801,7 @@ def test_rate_limit_exceeded_fail():
 def test_rate_limit_headers():
     """Rate limit bilgisi header'larda."""
     r = httpx.get("http://localhost:8080/api/v1/memory/export")
-    
+
     assert "X-RateLimit-Limit" in r.headers
     assert "X-RateLimit-Remaining" in r.headers
     assert "X-RateLimit-Reset" in r.headers
@@ -812,14 +812,14 @@ def test_rate_limit_burst():
     """10 req/s × 10s = 100 req başarılı."""
     start = time.time()
     successes = 0
-    
+
     for i in range(100):
         r = httpx.get("http://localhost:8080/health")
         if r.status_code == 200:
             successes += 1
-    
+
     elapsed = time.time() - start
-    
+
     # Burst: 100 req in ~10 seconds
     assert successes >= 90, f"Only {successes}/100 succeeded"
     assert elapsed < 15, f"Took {elapsed}s, expected ~10s"
@@ -867,7 +867,7 @@ import os
 def test_lessons_not_persisted_fail():
     """
     FAIL: Lessons memory'de kalıyor, restart ile kayboluyor.
-    
+
     Expected: lessons.json oluşur
     """
     analyzer = ReflectionAnalyzer()
@@ -875,14 +875,14 @@ def test_lessons_not_persisted_fail():
         id="l1", category="tool-use", observation="test",
         lesson_text="test lesson"
     ))
-    
+
     # Check file exists
     lessons_path = "data/lessons.json"
     assert os.path.exists(lessons_path), "Lessons not persisted!"
-    
+
     with open(lessons_path) as f:
         data = json.load(f)
-    
+
     assert len(data) >= 1
 
 
@@ -895,14 +895,14 @@ def test_lessons_restored_after_restart():
         id="persist_test", category="context-management",
         observation="context overflow", lesson_text="monitor limits"
     ))
-    
+
     # Simulate restart
     analyzer2 = ReflectionAnalyzer()
     analyzer2.load()  # Load from disk
-    
+
     active = analyzer2.get_active_lessons()
     ids = [l.id for l in active]
-    
+
     assert "persist_test" in ids
 
 
@@ -910,19 +910,19 @@ def test_lessons_restored_after_restart():
 def test_duplicate_lesson_merge():
     """Aynı category + severity → merge, count artar."""
     analyzer = ReflectionAnalyzer()
-    
+
     l1 = Lesson(id="dup1", category="tool-use", observation="obs1",
                 lesson_text="text1", severity="warning")
     l2 = Lesson(id="dup2", category="tool-use", observation="obs2",
                 lesson_text="text2", severity="warning")
-    
+
     analyzer._add_lesson(l1)
     analyzer._add_lesson(l2)
-    
+
     # Should merge into one
     active = analyzer.get_active_lessons()
     tool_use_lessons = [l for l in active if l.category == "tool-use"]
-    
+
     assert len(tool_use_lessons) == 1
     assert tool_use_lessons[0].occurrence_count == 2
 ```
@@ -971,21 +971,21 @@ import string
 def test_recall_slow_fail():
     """
     FAIL: 1000 entries ile recall 2 saniye sürüyor.
-    
+
     Expected: < 100ms
     """
     memory = SemanticMemory(db_path=":memory:")
-    
+
     # Insert 1000 entries
     for i in range(1000):
         subject = f"entity_{i}_{random.choice(['a','b','c'])}"
         memory.add(subject=subject, predicate="related_to", object="test")
-    
+
     # Benchmark recall
     start = time.perf_counter()
     results = memory.recall("entity_a")
     elapsed = time.perf_counter() - start
-    
+
     assert elapsed < 0.1, f"Recall took {elapsed:.3f}s, expected < 0.1s"
 
 
@@ -994,11 +994,11 @@ def test_recall_uses_index():
     """SQLite query plan index kullanıyor."""
     conn = sqlite3.connect(memory.db_path)
     conn.row_factory = sqlite3.Row
-    
+
     # EXPLAIN QUERY PLAN
     cur = conn.execute("SELECT * FROM semantic_entries WHERE subject LIKE '%test%'")
     plan = cur.fetchall()
-    
+
     # Should use index if available
     # assert "INDEX" in str(plan)
     conn.close()
@@ -1011,9 +1011,9 @@ def test_recall_correctness():
     memory.add("apple", "is_a", "fruit")
     memory.add("banana", "is_a", "fruit")
     memory.add("carrot", "is_a", "vegetable")
-    
+
     results = memory.recall("fruit")
-    
+
     assert len(results) == 2
     assert all("fruit" in r.predicate for r in results)
 ```

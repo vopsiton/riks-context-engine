@@ -4,15 +4,12 @@ Covers AC-48-01 (0 raw string concatenation), AC-48-02 (LIKE clause injection),
 AC-48-03 (existing tests pass).
 """
 
-import sqlite3
-import subprocess
-import threading
-import pytest
-import tempfile
 import os
+import subprocess
+import tempfile
 
+from riks_context_engine.graph.knowledge_graph import EntityType, KnowledgeGraph
 from riks_context_engine.memory.semantic import SemanticMemory
-from riks_context_engine.graph.knowledge_graph import KnowledgeGraph, EntityType
 
 
 class TestSQLInjectionFix:
@@ -213,9 +210,12 @@ class TestKnowledgeGraphSQLSafety:
     def test_kg_relate_no_sql_injection(self):
         """KG.relate() with special characters should be safe."""
         from riks_context_engine.graph.knowledge_graph import RelationshipType
+
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             kg = KnowledgeGraph(db_path=f.name)
-        e1 = kg.add_entity("Entity DROP TABLE", EntityType.CONCEPT)  # name has spaces, not SQL injection
+        e1 = kg.add_entity(
+            "Entity DROP TABLE", EntityType.CONCEPT
+        )  # name has spaces, not SQL injection
         e2 = kg.add_entity("Test", EntityType.CONCEPT)
         rel = kg.relate(e1, e2, RelationshipType.RELATED_TO)
         assert rel is not None

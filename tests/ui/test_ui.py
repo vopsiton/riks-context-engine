@@ -1,11 +1,11 @@
 """
 UI E2E Test — Rik Context Engine Web UI
 """
-import pytest
+
 import requests
-import json
 
 API_BASE = "http://127.0.0.1:9000"
+
 
 class TestUIBasicConnectivity:
     def test_ui_loads(self):

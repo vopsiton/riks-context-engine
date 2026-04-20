@@ -82,4 +82,4 @@ a2da66a → 9ab64bb (master)
 
 ---
 
-*🗿 Rapor tamamlandı. Proje bugün bitti.* 
+*🗿 Rapor tamamlandı. Proje bugün bitti.*

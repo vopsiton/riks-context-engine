@@ -270,7 +270,12 @@ class SemanticMemory:
             if subject and predicate:
                 rows = conn.execute(
                     "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE ? AND predicate LIKE ? ESCAPE ?",
-                    (f"%{self._escape_like(subject)}%", "\\", f"%{self._escape_like(predicate)}%", "\\"),
+                    (
+                        f"%{self._escape_like(subject)}%",
+                        "\\",
+                        f"%{self._escape_like(predicate)}%",
+                        "\\",
+                    ),
                 ).fetchall()
             elif subject:
                 rows = conn.execute(

@@ -141,6 +141,7 @@ class TestSemanticSearch:
 
 class FakeEmbedder:
     """Fake embedder that returns predictable vectors for testing."""
+
     # Match standard embedding dimension used by real embedders (e.g. Ollama nomic-embed-text)
     DIM = 384
 

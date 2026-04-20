@@ -230,9 +230,7 @@ class ToolHandler:
             "active_messages_count": stats.active_messages_count,
             "pruning_count": stats.pruning_count,
             "last_prune_timestamp": (
-                stats.last_prune_timestamp.isoformat()
-                if stats.last_prune_timestamp
-                else None
+                stats.last_prune_timestamp.isoformat() if stats.last_prune_timestamp else None
             ),
         }
 

@@ -105,9 +105,7 @@ class MCPServer:
         # Dispatch to handler method
         handler_method = getattr(self.handler, tool_name, None)
         if not handler_method or not callable(handler_method):
-            raise JsonRpcError(
-                ERR_METHOD_NOT_FOUND, f"No handler for tool: {tool_name}"
-            )
+            raise JsonRpcError(ERR_METHOD_NOT_FOUND, f"No handler for tool: {tool_name}")
 
         result = handler_method(tool_args)
 
@@ -146,9 +144,7 @@ class MCPServer:
                 # Valid but no-op MCP methods we don't implement
                 result = None
             else:
-                raise JsonRpcError(
-                    ERR_METHOD_NOT_FOUND, f"Unknown method: {method}"
-                )
+                raise JsonRpcError(ERR_METHOD_NOT_FOUND, f"Unknown method: {method}")
 
             if is_notification:
                 return None
@@ -165,9 +161,7 @@ class MCPServer:
             logger.exception("Unhandled error in dispatch")
             if is_notification:
                 return None
-            return build_error_response(
-                request_id, ERR_INTERNAL_ERROR, f"Internal error: {exc}"
-            )
+            return build_error_response(request_id, ERR_INTERNAL_ERROR, f"Internal error: {exc}")
 
 
 def _format_result(tool_name: str, result: dict[str, Any]) -> str:
@@ -183,6 +177,7 @@ def _format_result(tool_name: str, result: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # I/O helpers
 # ---------------------------------------------------------------------------
+
 
 def _read_request() -> dict[str, Any] | None:
     """Read one line from stdin, return parsed JSON or None on EOF.
@@ -202,6 +197,7 @@ def _read_request() -> dict[str, Any] | None:
     raw: dict[str, Any] = {}
     try:
         import json
+
         raw = json.loads(line)
     except Exception:
         pass  # Can't extract id from non-JSON
@@ -226,6 +222,7 @@ def _write_response(response: str | None) -> None:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """Run the MCP stdio server loop."""

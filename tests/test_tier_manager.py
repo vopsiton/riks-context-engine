@@ -1,10 +1,8 @@
 """Test TierManager for coverage."""
-import pytest
 
 from riks_context_engine.memory.tier_manager import (
-    TierManager,
-    TierConfig,
     MemoryType,
+    TierConfig,
 )
 
 

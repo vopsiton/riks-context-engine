@@ -2,9 +2,6 @@
 
 import os
 import tempfile
-from datetime import datetime, timezone
-
-import pytest
 
 from riks_context_engine.memory.base import MemoryEntry, MemoryType
 from riks_context_engine.memory.episodic import EpisodicMemory
@@ -29,6 +26,7 @@ def _temp_db():
 
 
 # ─── MemoryEntry (base.py) ───────────────────────────────────────────────────
+
 
 class TestMemoryEntry:
     """Lines 57-58, 62-63, 67, 82-88: MemoryEntry methods."""
@@ -115,6 +113,7 @@ class TestMemoryEntry:
 
 
 # ─── TierManager (tier_manager.py) ───────────────────────────────────────────
+
 
 class TestTierManager:
     """Lines 70-73, 84-105, 112-134, 151-168, 185-193."""

@@ -236,7 +236,9 @@ class ContextWindowManager:
             )
             return None
         except Exception as e:
-            logger.warning(f"Failed to get tiktoken encoding: {e}. Falling back to character-based estimation.")
+            logger.warning(
+                f"Failed to get tiktoken encoding: {e}. Falling back to character-based estimation."
+            )
             return None
 
     def _estimate_tokens(self, text: str) -> int:
@@ -260,7 +262,9 @@ class ContextWindowManager:
                 tokens = encoding.encode(text, disallowed_special=())
                 return len(tokens)
             except Exception as e:
-                logger.warning(f"tiktoken encoding failed: {e}. Falling back to character-based estimation.")
+                logger.warning(
+                    f"tiktoken encoding failed: {e}. Falling back to character-based estimation."
+                )
 
         # Fallback: character-based estimation with script-aware adjustments
         # Base estimate: ~4 chars per token (English average)
