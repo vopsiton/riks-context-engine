@@ -1,7 +1,11 @@
 """Context window manager - intelligent pruning and coherence."""
 
+import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -154,11 +158,64 @@ class ContextWindowManager:
         """Check if context window needs pruning."""
         return self.tokens_remaining() < 0
 
+    def _get_tiktoken_encoding(self) -> tuple["tiktoken.Encoding", str] | None:
+        """Get tiktoken encoding for the current model.
+
+        Returns:
+            Tuple of (encoding, encoding_name) or None if tiktoken unavailable
+        """
+        try:
+            import tiktoken
+
+            # Map model names to tiktoken encoding names
+            model_to_encoding = {
+                "gpt-4": "cl100k_base",
+                "gpt-4o": "cl100k_base",
+                "gpt-4o-mini": "cl100k_base",
+                "gpt-4-turbo": "cl100k_base",
+                "gpt-3.5-turbo": "cl100k_base",
+                "gpt-3.5": "cl100k_base",
+                "mini-max": "cl100k_base",
+                "mini-max-m2": "cl100k_base",
+                "minimax": "cl100k_base",
+                "qwen": "cl100k_base",
+                "qwen3": "cl100k_base",
+                "qwen3.5": "cl100k_base",
+                "gemma": "cl100k_base",
+                "gemma-4": "cl100k_base",
+                "llama": "cl100k_base",
+                "codellama": "cl100k_base",
+                "default": "cl100k_base",
+            }
+
+            # Determine encoding name based on model
+            model_lower = self.model.lower() if self.model else "default"
+            encoding_name = "cl100k_base"  # Default for most modern models
+
+            for model_pattern, enc_name in model_to_encoding.items():
+                if model_pattern in model_lower:
+                    encoding_name = enc_name
+                    break
+
+            encoding = tiktoken.get_encoding(encoding_name)
+            return encoding, encoding_name
+
+        except ImportError:
+            logger.warning(
+                "tiktoken not installed. Install with: pip install tiktoken\n"
+                "Falling back to character-based estimation."
+            )
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to get tiktoken encoding: {e}. Falling back to character-based estimation.")
+            return None
+
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count for text.
 
-        Uses character-based estimation as approximation.
-        More accurate with tiktoken when available.
+        Uses tiktoken for accurate model-specific encoding when available.
+        Falls back to character-based estimation for unsupported models
+        or when tiktoken is not installed.
 
         Args:
             text: Text to estimate tokens for
@@ -166,6 +223,17 @@ class ContextWindowManager:
         Returns:
             Estimated token count
         """
+        # Try tiktoken first for more accurate estimation
+        encoding_result = self._get_tiktoken_encoding()
+        if encoding_result is not None:
+            encoding, enc_name = encoding_result
+            try:
+                tokens = encoding.encode(text, disallowed_special=())
+                return len(tokens)
+            except Exception as e:
+                logger.warning(f"tiktoken encoding failed: {e}. Falling back to character-based estimation.")
+
+        # Fallback: character-based estimation with script-aware adjustments
         # Base estimate: ~4 chars per token (English average)
         base_tokens = len(text) // CHAR_PER_TOKEN
 
@@ -183,11 +251,9 @@ class ContextWindowManager:
         return base_tokens
 
     def _contains_non_latin(self, text: str) -> bool:
-        """Check if text contains non-Latin characters."""
-        import re
-
-        # CJK, Arabic, Cyrillic, etc.
-        return bool(re.search(r"[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff]", text))
+        """Check if text contains non-Latin or accented Latin characters."""
+        # CJK, Arabic, Cyrillic, Greek, etc.
+        return bool(re.search(r"[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff\u0370-\u03ff]", text))
 
     def _update_stats(self) -> None:
         """Update context statistics."""
