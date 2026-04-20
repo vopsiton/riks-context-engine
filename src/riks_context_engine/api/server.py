@@ -29,39 +29,44 @@ from riks_context_engine.memory.export import (
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
 
-# ─── LLM Client (Ollama) ──────────────────────────────────────────────────────────
-_OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+# ─── LLM Client (LM-Studio) ─────────────────────────────────────────────────────────
+_LMS_URL = os.environ.get("LMS_URL", "http://localhost:1234/v1")
 
-# Model name mapping: UI name → Ollama name
-_OLLAMA_MODEL_MAP = {
-    "gemma4-31b-it": "gemma4-31b:latest",
-    "qwen3.5-9b": "qwen3.5-9b:latest",
-    "gemma-4-31b": "gemma4-31b:latest",
-    "minimax-m2.7": "qwen3.5-9b:latest",  # fallback
+# Model name mapping: UI name → LMS model id
+_LMS_MODEL_MAP = {
+    "gemma4-31b-it": "google/gemma-4-31b",
+    "qwen3.5-9b": "qwen/qwen3.5-9b",
+    "gemma-4-31b": "google/gemma-4-31b",
+    "minimax-m2.7": "minimax-m2.7-ud",
+    "gemma4-e2b": "gemma-4-e2b-it-uncensored",
 }
 
 
-def _ollama_chat(model_ui_name: str, message: str) -> str:
-    """Call Ollama chat API and return the response text."""
-    ollama_model = _OLLAMA_MODEL_MAP.get(model_ui_name, "qwen3.5-9b:latest")
+def _lms_chat(model_ui_name: str, message: str) -> str:
+    """Call LM-Studio OpenAI-compatible chat API and return the response text."""
+    lms_model = _LMS_MODEL_MAP.get(model_ui_name, "minimax-m2.7-ud")
 
     payload = {
-        "model": ollama_model,
+        "model": lms_model,
         "messages": [{"role": "user", "content": message}],
         "stream": False,
+        "max_tokens": 2048,
     }
 
     try:
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=180.0) as client:
             response = client.post(
-                f"{_OLLAMA_URL}/api/chat",
+                f"{_LMS_URL}/chat/completions",
                 json=payload,
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()
-            return str(data.get("message", {}).get("content", ""))
+            choices = data.get("choices", [])
+            if choices:
+                return str(choices[0].get("message", {}).get("content", ""))
+            return "[HATA] Bos yanit"
     except Exception as e:
-        return f"[HATA] Ollama baglantisi basarisiz: {e}"
+        return f"[HATA] LM-Studio baglantisi basarisiz: {e}"
 
 
 class ChatRequest(BaseModel):
@@ -224,7 +229,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
 
     # Call Ollama for real AI response
-    response_text = _ollama_chat(model, req.message)
+    response_text = _lms_chat(model, req.message)
 
     return ChatResponse(
         response=response_text,
