@@ -42,7 +42,15 @@ class OllamaEmbedder:
     @property
     def client(self) -> httpx.Client:
         if self._client is None:
-            self._client = httpx.Client(base_url=self.base_url, timeout=self.timeout)
+            self._client = httpx.Client(
+                base_url=self.base_url,
+                timeout=self.timeout,
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=100,
+                    keepalive_expiry=120.0,
+                ),
+            )
         return self._client
 
     def embed(self, text: str) -> EmbeddingResult:
