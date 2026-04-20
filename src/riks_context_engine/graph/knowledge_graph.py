@@ -15,7 +15,6 @@ from riks_context_engine.memory.embedding import get_embedder
 logger = logging.getLogger(__name__)
 
 
-
 class EmbedderProtocol(Protocol):
     """Protocol for embedding services."""
 

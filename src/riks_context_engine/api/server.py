@@ -5,16 +5,16 @@ from __future__ import annotations
 import os
 import time
 from collections import defaultdict
-from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from threading import Lock
-from typing import Annotated, Literal
+from typing import Annotated, AsyncGenerator, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
@@ -92,11 +92,10 @@ def _record_request(ip: str) -> None:
 
 
 
-class RateLimitMiddleware:
+class RateLimitMiddleware(BaseHTTPMiddleware):
     """FastAPI middleware for per-IP rate limiting."""
 
-
-    async def __call__(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health endpoint
         if request.url.path == "/health":
             return await call_next(request)
@@ -148,7 +147,6 @@ def _build_cors_config() -> dict[str, list[str] | bool]:
         "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
         "allow_headers": ["Authorization", "Content-Type", "X-Request-ID"],
     }
-
 
 
 @asynccontextmanager
