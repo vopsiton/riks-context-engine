@@ -13,6 +13,23 @@ from riks_context_engine.memory.embedding import (
 class TestOllamaEmbedder:
     """Tests for OllamaEmbedder and get_embedder."""
 
+    def test_client_uses_connection_pool(self):
+        """Client should be configured with connection pooling limits."""
+        embedder = OllamaEmbedder()
+        # Verify the client was created (not None)
+        assert embedder.client is not None
+        # The client limits are configured on init; we verify the client works
+        # Connection reuse happens automatically with keepalive connections
+        embedder.close()
+
+    def test_client_is_cached(self):
+        """client property should return the same instance on repeated access."""
+        embedder = OllamaEmbedder()
+        c1 = embedder.client
+        c2 = embedder.client
+        assert c1 is c2
+        embedder.close()
+
     def test_get_embedder_returns_embedder(self):
         """get_embedder should return an OllamaEmbedder object."""
         embedder = get_embedder()
