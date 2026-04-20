@@ -9,13 +9,14 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from threading import Lock
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
@@ -96,10 +97,10 @@ def _record_request(ip: str) -> None:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """FastAPI middleware for per-IP rate limiting."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
         # Skip rate limiting for health endpoint
         if request.url.path == "/health":
-            return await call_next(request)
+            return await call_next(request)  # type: ignore[no-any-return]
 
         ip = _get_client_ip(request)
         allowed, remaining, reset = _check_rate_limit(ip)
@@ -122,7 +123,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Limit"] = str(_RATE_LIMIT_REQUESTS)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset)
-        return response
+        return response  # type: ignore[no-any-return]
 
 
 # Module-level memory instances (set on startup via lifespan)
@@ -170,7 +171,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    **_build_cors_config(),
+    **cast(dict[str, Any], _build_cors_config()),
 )
 
 app.add_middleware(RateLimitMiddleware)
