@@ -134,6 +134,47 @@ class TestDumpAndParse:
         with pytest.raises(ValueError, match="Expected object"):
             parse_manifest("[]", "json")
 
+    def test_parse_rejects_missing_metadata(self):
+        bad_data = {
+            "episodic": [],
+            "semantic": [],
+            "procedural": [],
+        }
+        with pytest.raises(ValueError, match="Missing required 'metadata'"):
+            parse_manifest(json.dumps(bad_data), "json")
+
+    def test_parse_rejects_missing_schema_version(self):
+        bad_data = {
+            "metadata": {
+                "schema_version": "1.0",
+                "exported_at": "2026-01-01T00:00:00Z",
+                "tool": "test",
+                "export_id": "abc",
+            },
+            "episodic": [],
+            "semantic": [],
+            "procedural": [],
+        }
+        del bad_data["metadata"]["schema_version"]
+        with pytest.raises(ValueError, match="schema_version"):
+            parse_manifest(json.dumps(bad_data), "json")
+
+    def test_parse_rejects_none_schema_version(self):
+        bad_data = {
+            "metadata": {
+                "schema_version": "1.0",
+                "exported_at": "2026-01-01T00:00:00Z",
+                "tool": "test",
+                "export_id": "abc",
+            },
+            "episodic": [],
+            "semantic": [],
+            "procedural": [],
+        }
+        bad_data["metadata"]["schema_version"] = None
+        with pytest.raises(ValueError, match="schema_version"):
+            parse_manifest(json.dumps(bad_data), "json")
+
 
 class TestImportToMemory:
     def test_import_merge_skips_duplicates(self):
