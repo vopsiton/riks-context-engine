@@ -11,6 +11,7 @@ from datetime import datetime
 from threading import Lock
 from typing import Annotated, Any, Literal, cast
 
+import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -28,9 +29,6 @@ from riks_context_engine.memory.export import (
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
 
-import httpx
-
-
 # ─── LLM Client (Ollama) ──────────────────────────────────────────────────────────
 _OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
@@ -46,7 +44,7 @@ _OLLAMA_MODEL_MAP = {
 def _ollama_chat(model_ui_name: str, message: str) -> str:
     """Call Ollama chat API and return the response text."""
     ollama_model = _OLLAMA_MODEL_MAP.get(model_ui_name, "qwen3.5-9b:latest")
-    
+
     payload = {
         "model": ollama_model,
         "messages": [
@@ -54,7 +52,7 @@ def _ollama_chat(model_ui_name: str, message: str) -> str:
         ],
         "stream": False,
     }
-    
+
     try:
         with httpx.Client(timeout=60.0) as client:
             response = client.post(
@@ -62,8 +60,8 @@ def _ollama_chat(model_ui_name: str, message: str) -> str:
                 json=payload,
             )
             response.raise_for_status()
-            data = response.json()
-            return data.get("message", {}).get("content", "")
+            data: dict[str, Any] = response.json()
+            return str(data.get("message", {}).get("content", ""))
     except Exception as e:
         return f"[HATA] Ollama baglantisi basarisiz: {e}"
 
