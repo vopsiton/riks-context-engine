@@ -28,6 +28,45 @@ from riks_context_engine.memory.export import (
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
 
+import httpx
+
+
+# ─── LLM Client (Ollama) ──────────────────────────────────────────────────────────
+_OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+
+# Model name mapping: UI name → Ollama name
+_OLLAMA_MODEL_MAP = {
+    "gemma4-31b-it": "gemma4-31b:latest",
+    "qwen3.5-9b": "qwen3.5-9b:latest",
+    "gemma-4-31b": "gemma4-31b:latest",
+    "minimax-m2.7": "qwen3.5-9b:latest",  # fallback
+}
+
+
+def _ollama_chat(model_ui_name: str, message: str) -> str:
+    """Call Ollama chat API and return the response text."""
+    ollama_model = _OLLAMA_MODEL_MAP.get(model_ui_name, "qwen3.5-9b:latest")
+    
+    payload = {
+        "model": ollama_model,
+        "messages": [
+            {"role": "user", "content": message}
+        ],
+        "stream": False,
+    }
+    
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(
+                f"{_OLLAMA_URL}/api/chat",
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("message", {}).get("content", "")
+    except Exception as e:
+        return f"[HATA] Ollama baglantisi basarisiz: {e}"
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -194,9 +233,11 @@ def chat(req: ChatRequest) -> ChatResponse:
     if model not in _MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
 
+    # Call Ollama for real AI response
+    response_text = _ollama_chat(model, req.message)
+
     return ChatResponse(
-        response=f"[{model}] Mesajını aldım: {req.message!r} — "
-        "Context engine entegrasyonu yakında aktif olacak.",
+        response=response_text,
         model=model,
     )
 
