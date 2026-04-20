@@ -1,9 +1,16 @@
 """Task decomposition - goal → executable steps."""
 
+from __future__ import annotations
+
+import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class TaskStatus(Enum):
@@ -34,6 +41,7 @@ class Task:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None
     retry_count: int = 0
+    category: str = "General"  # Task category for LLM-based decomposition
 
     def mark_done(self) -> None:
         self.status = TaskStatus.DONE
@@ -126,61 +134,158 @@ def infer_dependencies(tasks: list[Task]) -> list[Task]:
 class TaskDecomposer:
     """Decomposes complex goals into executable task graphs.
 
-    Uses pattern-based extraction from natural language to build
-    a dependency graph of tasks with success criteria and
-    rollback possibilities.
+    Uses LLM-based extraction when available (ollama by default),
+    with pattern-matching fallback for simple or offline scenarios.
     """
 
-    def __init__(self, llm_provider: str = "ollama"):
-        self.llm_provider = llm_provider
-        self._task_counter = 0
+    DEFAULT_MODEL = "qwen3.5-9b"
 
-    def decompose(self, goal: str) -> TaskGraph:
-        """Decompose a natural language goal into a task graph."""
+    def __init__(
+        self,
+        llm_provider: str = "ollama",
+        llm_model: str | None = None,
+        llm_base_url: str | None = None,
+    ):
+        self.llm_provider = llm_provider
+        self.llm_model = llm_model or self.DEFAULT_MODEL
+        self.llm_base_url = llm_base_url
+        self._task_counter = 0
+        self._llm_available: bool | None = None
+
+    def decompose(self, goal: str, use_llm: bool = False) -> TaskGraph:
+        """Decompose a natural language goal into a task graph.
+
+        Args:
+            goal: The natural language goal to decompose.
+            use_llm: If True, attempt LLM-based decomposition first,
+                     falling back to pattern matching on failure.
+                     Default is False (pattern-matching only for reliability).
+        """
         graph = TaskGraph(goal=goal)
-        tasks = self._extract_tasks(goal)
+
+        if use_llm:
+            tasks = self._extract_tasks_llm(goal)
+            if tasks:
+                graph.tasks = tasks
+                valid, err = self.validate_graph(graph)
+                if valid:
+                    return graph
+                logger.warning("LLM decomposition produced invalid graph: %s", err)
+                # Fall through to pattern matching
+
+        # Pattern matching fallback
+        tasks = self._extract_tasks_fallback(goal)
         graph.tasks = tasks
         return graph
 
-    def _extract_tasks(self, goal: str) -> list[Task]:
+    # -------------------------------------------------------------------------
+    # LLM-based extraction
+    # -------------------------------------------------------------------------
+
+    _DECOMPOSE_PROMPT = """You are a task planning assistant. Given a goal, decompose it into atomic executable tasks.
+
+Return a JSON array of task objects. Each task has:
+- name: short descriptive name (max 60 chars)
+- description: what this task does (max 200 chars)
+- category: one of "Setup and Configuration", "Build and Creation", "Testing and Verification", "Deployment and Release", "Cleanup and Teardown", "Analysis and Review", "General"
+- parallel_group: null or a string group name if this task can run concurrently with others in the same group
+- success_criteria: how to know this task succeeded (max 100 chars)
+
+Goal: {goal}
+
+Return ONLY the JSON array, no markdown, no explanation.
+Example: [{{"name": "Setup environment", "description": "Install dependencies", "category": "Setup and Configuration", "parallel_group": null, "success_criteria": "Dependencies installed"}}]
+"""
+
+    def _extract_tasks_llm(self, goal: str) -> list[Task]:
+        """Extract tasks using LLM. Returns empty list on failure."""
+        if self._llm_available is False:
+            return []  # Don't retry if known unavailable
+
+        try:
+            import ollama
+        except ImportError:
+            logger.debug("ollama package not available, using fallback")
+            self._llm_available = False
+            return []
+
+        try:
+            base_url = self.llm_base_url or "http://localhost:11434"
+            client = ollama.Client(host=base_url, timeout=10.0)
+            response = client.chat(
+                model=self.llm_model,
+                messages=[{"role": "user", "content": self._DECOMPOSE_PROMPT.format(goal=goal)}],
+                options={"temperature": 0.3, "num_predict": 512},
+            )
+            content = (response.message.content or "").strip()
+
+            # Strip markdown code fences if present
+            if content.startswith("```"):
+                content = content.split("\n", 1)[1]
+            if content.endswith("```"):
+                content = content.rsplit("\n", 1)[0]
+            content = content.strip()
+
+            parsed = json.loads(content)
+            if not isinstance(parsed, list):
+                logger.warning("LLM returned non-list: %s", type(parsed))
+                return []
+
+            tasks = [self._llm_entry_to_task(entry) for entry in parsed]
+            # Infer dependencies between LLM-generated tasks
+            tasks = infer_dependencies(tasks)
+            return tasks
+
+        except Exception as exc:  # pragma: no cover — network, model, parse errors
+            logger.warning("LLM decomposition failed: %s", exc)
+            self._llm_available = False
+            return []
+
+    def _llm_entry_to_task(self, entry: dict[str, Any]) -> Task:
+        """Convert an LLM JSON entry to a Task."""
+        self._task_counter += 1
+        return Task(
+            id=f"task_{self._task_counter}",
+            name=str(entry.get("name", ""))[:60],
+            description=str(entry.get("description", ""))[:200],
+            category=entry.get("category", "General"),
+            parallel_group=entry.get("parallel_group"),
+            success_criteria=str(entry.get("success_criteria", "Task completed"))[:100],
+        )
+
+    # -------------------------------------------------------------------------
+    # Pattern-matching fallback
+    # -------------------------------------------------------------------------
+
+    def _extract_tasks_fallback(self, goal: str) -> list[Task]:
         """Extract tasks from goal text using pattern matching."""
         tasks = []
         goal_lower = goal.lower()
 
-        # Check for common goal patterns
         if "and" in goal_lower or "," in goal_lower:
-            # Split by common delimiters
             parts = re.split(r",\s*(?:and\s+)?|\s+and\s+", goal)
             for i, part in enumerate(parts):
                 part = part.strip().strip(".")
                 if len(part) > 3:
-                    task = self._create_task(part, i)
+                    task = self._create_task_fallback(part, i)
                     tasks.append(task)
         else:
-            # Single task
-            tasks.append(self._create_task(goal.strip(), 0))
+            tasks.append(self._create_task_fallback(goal.strip(), 0))
 
-        # Infer dependencies
-        tasks = infer_dependencies(tasks)
+        return infer_dependencies(tasks)
 
-        return tasks
-
-    def _create_task(self, description: str, index: int) -> Task:
-        """Create a task from description."""
+    def _create_task_fallback(self, description: str, index: int) -> Task:
+        """Create a task from description using pattern classification."""
         self._task_counter += 1
 
-        # Classify task type
         task_type = "General"
         for pattern, category in DECOMPOSE_PATTERNS:
             if re.search(pattern, description.lower()):
                 task_type = category
                 break
 
-        # Build task name
         task_name = f"{task_type}: {description[:50]}"
-
-        # Determine success criteria based on type
-        success_criteria = self._infer_success_criteria(task_type, description)
+        success_criteria = self._infer_success_criteria(task_type)
 
         return Task(
             id=f"task_{self._task_counter}",
@@ -189,9 +294,9 @@ class TaskDecomposer:
             success_criteria=success_criteria,
         )
 
-    def _infer_success_criteria(self, task_type: str, description: str) -> str:
-        """Infer success criteria from task type and description."""
-        criteria_map = {
+    def _infer_success_criteria(self, task_type: str) -> str:
+        """Infer success criteria from task type."""
+        criteria_map: dict[str, str] = {
             "Setup and Configuration": "Configuration completed without errors",
             "Build and Creation": "Build artifacts created successfully",
             "Testing and Verification": "All tests pass",
