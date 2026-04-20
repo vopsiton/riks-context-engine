@@ -62,18 +62,24 @@ class SemanticMemory:
         self._is_temp = self.db_path.startswith(":") and self.db_path.endswith(":")
         if not self._is_temp:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._shared_conn = sqlite3.connect(
-            self.db_path,
-            check_same_thread=False,
-            timeout=30,  # Wait up to 30s for locks before failing
-        )
-        self._conn = lambda: self._shared_conn
         self._write_lock = threading.Lock()
+        self._local = threading.local()  # per-thread connection storage
+        if self._is_temp:
+            # In-memory DB: must share a single connection (each conn = separate DB)
+            self._shared_conn: sqlite3.Connection | None = sqlite3.connect(
+                self.db_path,
+                check_same_thread=False,
+                timeout=30,
+            )
+            self._shared_conn.row_factory = sqlite3.Row
+        else:
+            self._shared_conn = None
         self._init_db()
         self._enable_wal()
 
     def __del__(self) -> None:
-        self._shared_conn.close()
+        if self._shared_conn is not None:
+            self._shared_conn.close()
 
     def _enable_wal(self) -> None:
         """Enable WAL mode for better concurrent access.
@@ -85,7 +91,29 @@ class SemanticMemory:
         with self._conn() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
 
+    def _conn(self) -> sqlite3.Connection:
+        """Return a thread-appropriate SQLite connection.
+
+        For in-memory DBs: returns the single shared connection (each new
+        connection would be an independent empty database).
+
+        For file-based DBs: returns a thread-local connection, creating one
+        if this thread hasn't opened one yet.  This eliminates the
+        'bad parameter or other API misuse' / 'tuple index out of range'
+        errors that arise when a shared connection is mutated (e.g.
+        ``row_factory``) or queried from multiple threads simultaneously.
+        """
+        if self._is_temp:
+            return self._shared_conn  # type: ignore[return-value]
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
+            conn.row_factory = sqlite3.Row
+            self._local.conn = conn
+        return conn
+
     def _connect(self) -> sqlite3.Connection:
+        """Legacy helper; prefer _conn() for internal use."""
         return sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
 
     def _init_db(self) -> None:
@@ -217,7 +245,6 @@ class SemanticMemory:
         """Get entry by ID, incrementing access count (thread-safe)."""
         with self._write_lock:
             with self._conn() as conn:
-                conn.row_factory = sqlite3.Row
                 row = conn.execute(
                     "SELECT * FROM semantic_entries WHERE id = ?", (entry_id,)
                 ).fetchone()
@@ -242,7 +269,6 @@ class SemanticMemory:
         LIKE special characters (%, _) are escaped so user input is treated literally.
         """
         with self._conn() as conn:
-            conn.row_factory = sqlite3.Row
             if subject and predicate:
                 rows = conn.execute(
                     "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE ? AND predicate LIKE ? ESCAPE ?",
@@ -276,7 +302,6 @@ class SemanticMemory:
         """
         q = self._escape_like(query)
         with self._conn() as conn:
-            conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM semantic_entries "
                 "WHERE subject LIKE ? ESCAPE ? OR predicate LIKE ? ESCAPE ? OR object LIKE ? ESCAPE ?",
