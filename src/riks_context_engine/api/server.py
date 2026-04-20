@@ -5,10 +5,11 @@ from __future__ import annotations
 import os
 import time
 from collections import defaultdict
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from threading import Lock
-from typing import Annotated, AsyncGenerator, Literal
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware

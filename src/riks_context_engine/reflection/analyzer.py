@@ -3,7 +3,7 @@
 import json
 import os
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -120,9 +120,9 @@ class ReflectionAnalyzer:
 
     def save(self) -> None:
         """Persist active lessons to disk."""
-        active = [l for l in self._lessons.values() if not l.resolved]
+        active = [lesson for lesson in self._lessons.values() if not lesson.resolved]
         data = {
-            "lessons": [asdict(l) for l in active],
+            "lessons": [asdict(lesson) for lesson in active],
             "mistake_counts": self._mistake_counts,
             "saved_at": datetime.now(timezone.utc).isoformat(),
         }

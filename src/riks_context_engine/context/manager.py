@@ -1,10 +1,14 @@
 """Context window manager - intelligent pruning and coherence."""
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import asyncio
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import tiktoken
 
 logger = logging.getLogger(__name__)
 
