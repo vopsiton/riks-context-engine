@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
@@ -91,11 +92,10 @@ def _record_request(ip: str) -> None:
 
 
 
-class RateLimitMiddleware:
+class RateLimitMiddleware(BaseHTTPMiddleware):
     """FastAPI middleware for per-IP rate limiting."""
 
-
-    async def __call__(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):
         # Skip rate limiting for health endpoint
         if request.url.path == "/health":
             return await call_next(request)
