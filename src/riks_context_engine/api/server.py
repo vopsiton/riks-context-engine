@@ -39,6 +39,23 @@ class ChatResponse(BaseModel):
 
 _MODELS = ["gemma4-31b-it", "qwen3.5-9b", "gemma-4-31b", "minimax-m2.7"]
 
+API_KEY = os.environ.get("API_KEY", "")
+
+# ─── API Key Middleware ────────────────────────────────────────────────────────
+
+_API_KEY_PROTECTED_PATHS = frozenset(["/", "/api/chat", "/api/v1/memory/export", "/api/v1/memory/import", "/models"])
+
+
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+    """FastAPI middleware for API key authentication."""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path in _API_KEY_PROTECTED_PATHS and API_KEY:
+            if request.headers.get("X-API-Key") != API_KEY:
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return await call_next(request)
+
+
 # ─── Rate Limiting ─────────────────────────────────────────────────────────────
 _RATE_LIMIT_REQUESTS = int(os.environ.get("RATE_LIMIT_REQUESTS", "100"))
 _RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))  # seconds
@@ -173,6 +190,7 @@ app.add_middleware(
 )
 
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(APIKeyAuthMiddleware)
 
 
 
