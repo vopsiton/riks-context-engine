@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy app source (needed for editable install)
 COPY src/ ./src/
 COPY tests/ ./tests/
+COPY ui/ ./ui/
 
 # Copy and install
 COPY pyproject.toml ./
@@ -25,9 +26,10 @@ RUN mkdir -p /app/data && chmod 755 /app/data
 
 ENV PYTHONPATH=/app/src
 ENV DATA_DIR=/app/data
+ENV UI_PATH=/app/ui/index.html
 
 # Default port
 EXPOSE 8000
 
-# Default command - interactive shell
-CMD ["python", "-c", "print('Rik\\'s Context Engine ready!')"]
+# Default command - run uvicorn server
+CMD ["python", "-m", "uvicorn", "riks_context_engine.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
