@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import os
+import time
+from collections import defaultdict
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Annotated, Literal
+from threading import Lock
+from typing import Any, Annotated, Literal, cast
 
-from fastapi import FastAPI, HTTPException, Query
+import httpx
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
@@ -21,6 +28,45 @@ from riks_context_engine.memory.export import (
 )
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
+
+
+# ─── LLM Client (LM-Studio) ─────────────────────────────────────────────────────────
+_LMS_URL = os.environ.get("LMS_URL", "http://localhost:1234/v1")
+
+# Model name mapping: UI name → LMS model id
+_LMS_MODEL_MAP = {
+    "gemma4-31b-it": "google/gemma-4-31b",
+    "qwen3.5-9b": "qwen/qwen3.5-9b",
+    "gemma-4-31b": "google/gemma-4-31b",
+    "minimax-m2.7": "minimax-m2.7-ud",
+    "gemma4-e2b": "gemma-4-e2b-it-uncensored",
+}
+
+
+def _lms_chat(model_ui_name: str, message: str) -> str:
+    """Call LM-Studio OpenAI-compatible chat API and return the response text."""
+    lms_model = _LMS_MODEL_MAP.get(model_ui_name, "minimax-m2.7-ud")
+
+    payload = {
+        "model": lms_model,
+        "messages": [{"role": "user", "content": message}],
+        "stream": False,
+    }
+
+    try:
+        with httpx.Client(timeout=180.0) as client:
+            response = client.post(
+                f"{_LMS_URL}/chat/completions",
+                json=payload,
+            )
+            response.raise_for_status()
+            data: dict[str, Any] = response.json()
+            choices = data.get("choices", [])
+            if choices:
+                return str(choices[0].get("message", {}).get("content", ""))
+            return "[HATA] Bos yanit"
+    except Exception as e:
+        return f"[HATA] LM-Studio baglantisi basarisiz: {e}"
 
 
 class ChatRequest(BaseModel):
@@ -35,14 +81,92 @@ class ChatResponse(BaseModel):
 
 _MODELS = ["gemma4-31b-it", "qwen3.5-9b", "gemma-4-31b", "minimax-m2.7"]
 
+# ─── Rate Limiting ─────────────────────────────────────────────────────────────
+_RATE_LIMIT_REQUESTS = int(os.environ.get("RATE_LIMIT_REQUESTS", "100"))
+_RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))
+
+_ip_request_log: dict[str, list[tuple[float, int]]] = defaultdict(list)
+_ip_lock = Lock()
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(ip: str) -> tuple[bool, int, int]:
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW
+    with _ip_lock:
+        _ip_request_log[ip] = [(ts, cnt) for ts, cnt in _ip_request_log[ip] if ts > window_start]
+        entries = _ip_request_log[ip]
+        total = sum(cnt for _, cnt in entries)
+        remaining = max(0, _RATE_LIMIT_REQUESTS - total)
+        if remaining == 0:
+            oldest = min(ts for ts, _ in entries) if entries else now
+            reset_seconds = int(oldest + _RATE_LIMIT_WINDOW - now)
+            return False, 0, max(1, reset_seconds)
+        return True, remaining - 1, _RATE_LIMIT_WINDOW
+
+
+def _record_request(ip: str) -> None:
+    now = time.time()
+    with _ip_lock:
+        _ip_request_log[ip].append((now, 1))
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        if request.url.path == "/health":
+            return await call_next(request)
+        ip = _get_client_ip(request)
+        allowed, remaining, reset = _check_rate_limit(ip)
+        if not allowed:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too Many Requests"},
+                headers={
+                    "X-RateLimit-Limit": str(_RATE_LIMIT_REQUESTS),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(reset),
+                    "Retry-After": str(reset),
+                },
+            )
+        _record_request(ip)
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(_RATE_LIMIT_REQUESTS)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset)
+        return response
+
+
 # Module-level memory instances (set on startup via lifespan)
 _episodic_memory: EpisodicMemory | None = None
 _semantic_memory: SemanticMemory | None = None
 _procedural_memory: ProceduralMemory | None = None
 
 
+def _get_allowed_origins() -> list[str]:
+    origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+    if not origins_env:
+        return ["http://localhost:3000", "http://localhost:8080"]
+    return [o.strip() for o in origins_env.split(",") if o.strip()]
+
+
+def _build_cors_config() -> dict[str, list[str] | bool]:
+    origins = _get_allowed_origins()
+    return {
+        "allow_origins": origins,
+        "allow_credentials": True,
+        "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+        "allow_headers": ["Authorization", "Content-Type", "X-Request-ID"],
+    }
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _episodic_memory, _semantic_memory, _procedural_memory
     data_dir = os.environ.get("DATA_DIR", "data")
     _episodic_memory = EpisodicMemory(storage_path=f"{data_dir}/episodic.json")
@@ -59,12 +183,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **cast(dict[str, Any], _build_cors_config()),
 )
 
 
@@ -83,12 +205,8 @@ def chat(req: ChatRequest) -> ChatResponse:
     model = req.model or "gemma4-31b-it"
     if model not in _MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
-
-    return ChatResponse(
-        response=f"[{model}] Mesajını aldım: {req.message!r} — "
-        "Context engine entegrasyonu yakında aktif olacak.",
-        model=model,
-    )
+    response_text = _lms_chat(model, req.message)
+    return ChatResponse(response=response_text, model=model)
 
 
 @app.get("/")
@@ -138,10 +256,8 @@ def export_memory_api(
     """Export memory tiers as JSON or YAML."""
     if format is None:
         format = "json"
-
     include_types = [t.strip() for t in types.split(",")] if types else None
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
-
     manifest = export_memory(
         episodic_memory=_episodic_memory,
         semantic_memory=_semantic_memory,
@@ -151,14 +267,12 @@ def export_memory_api(
         date_to=date_to,
         tags=tag_list,
     )
-
     serialized = dump_manifest(manifest, format)
     counts = {
         "episodic": len(manifest.episodic),
         "semantic": len(manifest.semantic),
         "procedural": len(manifest.procedural),
     }
-
     return MemoryExportResponse(
         export_id=manifest.metadata.export_id,
         schema_version=manifest.metadata.schema_version,
@@ -174,7 +288,6 @@ def import_memory_api(req: MemoryImportRequest) -> MemoryImportResponse:
         manifest = parse_manifest(req.content, req.format)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
     imported = import_to_memory(
         manifest,
         episodic_memory=_episodic_memory,
@@ -182,7 +295,6 @@ def import_memory_api(req: MemoryImportRequest) -> MemoryImportResponse:
         procedural_memory=_procedural_memory,
         merge=req.merge,
     )
-
     return MemoryImportResponse(
         imported=imported,
         schema_version=manifest.metadata.schema_version,
