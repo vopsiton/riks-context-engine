@@ -57,9 +57,7 @@ class ExportManifest:
         )
 
 
-def _entry_in_date_range(
-    ts: datetime, date_from: datetime | None, date_to: datetime | None
-) -> bool:
+def _entry_in_date_range(ts: datetime, date_from: datetime | None, date_to: datetime | None) -> bool:
     if date_from and ts < date_from:
         return False
     if date_to and ts > date_to:
@@ -161,9 +159,7 @@ def dump_manifest(manifest: ExportManifest, format: str, path: Path | None = Non
     if format == MemoryFormat.JSON:
         content = json.dumps(data, indent=2, ensure_ascii=False)
     else:
-        content = yaml.safe_dump(
-            data, default_flow_style=False, sort_keys=False, allow_unicode=True
-        )
+        content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
     if path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
@@ -177,17 +173,7 @@ def parse_manifest(content: str, format: str) -> ExportManifest:
         data = yaml.safe_load(content)
     if not isinstance(data, dict):
         raise ValueError(f"Expected object at top level, got {type(data).__name__}")
-    metadata = data.get("metadata")
-    if metadata is None:
-        raise ValueError("Missing required 'metadata' field in manifest")
-    if not isinstance(metadata, dict):
-        raise ValueError(f"Expected 'metadata' to be an object, got {type(metadata).__name__}")
-    # schema_version is required and must not be None
-    if "schema_version" not in metadata:
-        raise ValueError("Missing required 'schema_version' in metadata")
-    ver = metadata["schema_version"]
-    if ver is None:
-        raise ValueError("Missing required 'schema_version' in metadata")
+    ver = data.get("metadata", {}).get("schema_version", "0.0")
     _check_schema_compat(ver)
     return ExportManifest.from_dict(data)
 

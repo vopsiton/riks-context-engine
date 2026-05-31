@@ -1,16 +1,8 @@
 """Context window manager - intelligent pruning and coherence."""
 
-import asyncio
-import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import tiktoken
-
-logger = logging.getLogger(__name__)
+from pathlib import Path
 
 
 @dataclass
@@ -83,18 +75,20 @@ class ContextWindowManager:
         >>> msg.tokens_remaining  # Show tokens left in window
     """
 
-    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max"):
+    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max", storage_path: str | None = None):
         """Initialize context window manager.
 
         Args:
             max_tokens: Maximum token capacity for the context window.
                        Actual usable tokens = max_tokens - 2 * TOKEN_BUFFER
             model: Model name for token estimation (affects encoding)
+            storage_path: Optional path for persisting context history to disk.
+                         Defaults to "data/context_history.json".
         """
         self.max_tokens = max_tokens
         self.usable_tokens = max_tokens - (2 * TOKEN_BUFFER_PER_SIDE)
         self.model = model
-        self._async_lock = asyncio.Lock()
+        self.storage_path = storage_path  # None = no auto-persist
         self.messages: list[ContextMessage] = []
         self._total_pruning_events = 0
         self.stats = ContextStats(
@@ -103,6 +97,7 @@ class ContextWindowManager:
             messages_count=0,
             active_messages_count=0,
         )
+        self.load()
 
     def add(
         self,
@@ -137,31 +132,8 @@ class ContextWindowManager:
         self.messages.append(msg)
         self._update_stats()
         self._prune_if_needed()
+        self._auto_save()
         return msg
-
-    async def add_async(
-        self,
-        role: str,
-        content: str,
-        importance: float = 0.5,
-        is_grounding: bool = False,
-        priority_tier: int = 2,
-    ) -> ContextMessage:
-        """Async version of add() with asyncio.Lock for thread-safety.
-
-
-        Args:
-            role: Message role ("user", "assistant", "system")
-            content: Message text content
-            importance: Importance score 0.0-1.0 (higher = more important)
-            is_grounding: True for user preferences, active projects
-            priority_tier: 0-3, lower = more protected from pruning
-
-        Returns:
-            Created ContextMessage
-        """
-        async with self._async_lock:
-            return self.add(role, content, importance, is_grounding, priority_tier)
 
     def get_messages(self, include_pruned: bool = False) -> list[ContextMessage]:
         """Get messages in context window.
@@ -188,66 +160,11 @@ class ContextWindowManager:
         """Check if context window needs pruning."""
         return self.tokens_remaining() < 0
 
-    def _get_tiktoken_encoding(self) -> tuple["tiktoken.Encoding", str] | None:
-        """Get tiktoken encoding for the current model.
-
-        Returns:
-            Tuple of (encoding, encoding_name) or None if tiktoken unavailable
-        """
-        try:
-            import tiktoken
-
-            # Map model names to tiktoken encoding names
-            model_to_encoding = {
-                "gpt-4": "cl100k_base",
-                "gpt-4o": "cl100k_base",
-                "gpt-4o-mini": "cl100k_base",
-                "gpt-4-turbo": "cl100k_base",
-                "gpt-3.5-turbo": "cl100k_base",
-                "gpt-3.5": "cl100k_base",
-                "mini-max": "cl100k_base",
-                "mini-max-m2": "cl100k_base",
-                "minimax": "cl100k_base",
-                "qwen": "cl100k_base",
-                "qwen3": "cl100k_base",
-                "qwen3.5": "cl100k_base",
-                "gemma": "cl100k_base",
-                "gemma-4": "cl100k_base",
-                "llama": "cl100k_base",
-                "codellama": "cl100k_base",
-                "default": "cl100k_base",
-            }
-
-            # Determine encoding name based on model
-            model_lower = self.model.lower() if self.model else "default"
-            encoding_name = "cl100k_base"  # Default for most modern models
-
-            for model_pattern, enc_name in model_to_encoding.items():
-                if model_pattern in model_lower:
-                    encoding_name = enc_name
-                    break
-
-            encoding = tiktoken.get_encoding(encoding_name)
-            return encoding, encoding_name
-
-        except ImportError:
-            logger.warning(
-                "tiktoken not installed. Install with: pip install tiktoken\n"
-                "Falling back to character-based estimation."
-            )
-            return None
-        except Exception as e:
-            logger.warning(
-                f"Failed to get tiktoken encoding: {e}. Falling back to character-based estimation."
-            )
-            return None
-
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count for text.
 
-        Uses tiktoken for accurate model-specific encoding when available
-        for Latin-based text. Falls back to character-based estimation for
-        non-Latin scripts (CJK, Arabic, etc.) where tiktoken gives wrong results.
+        Uses character-based estimation as approximation.
+        More accurate with tiktoken when available.
 
         Args:
             text: Text to estimate tokens for
@@ -255,26 +172,6 @@ class ContextWindowManager:
         Returns:
             Estimated token count
         """
-        # IMPORTANT: Check non-Latin BEFORE calling tiktoken.
-        # tiktoken SUCCEEDS for CJK/non-Latin but gives wrong counts
-        # (1 char = 1 token per tiktoken, spec says 2 chars/token).
-        if self._contains_non_latin(text):
-            # Non-Latin scripts: ~2 chars per token
-            return max(1, len(text) // 2)
-
-        # For Latin-based text, try tiktoken for accurate estimation
-        encoding_result = self._get_tiktoken_encoding()
-        if encoding_result is not None:
-            encoding, enc_name = encoding_result
-            try:
-                tokens = encoding.encode(text, disallowed_special=())
-                return len(tokens)
-            except Exception as e:
-                logger.warning(
-                    f"tiktoken encoding failed: {e}. Falling back to character-based estimation."
-                )
-
-        # Fallback: character-based estimation with script-aware adjustments
         # Base estimate: ~4 chars per token (English average)
         base_tokens = len(text) // CHAR_PER_TOKEN
 
@@ -284,12 +181,19 @@ class ContextWindowManager:
             # Code tends to use more tokens per char
             base_tokens = int(base_tokens * 1.3)
 
+        # Special handling for non-Latin scripts (more tokens per char)
+        # e.g., CJK characters are typically 1 token per 2 chars
+        if self._contains_non_latin(text):
+            base_tokens = int(len(text) / 2)
+
         return base_tokens
 
     def _contains_non_latin(self, text: str) -> bool:
-        """Check if text contains non-Latin or accented Latin characters."""
-        # CJK, Arabic, Cyrillic, Greek, etc.
-        return bool(re.search(r"[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff\u0370-\u03ff]", text))
+        """Check if text contains non-Latin characters."""
+        import re
+
+        # CJK, Arabic, Cyrillic, etc.
+        return bool(re.search(r"[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff]", text))
 
     def _update_stats(self) -> None:
         """Update context statistics."""
@@ -334,19 +238,6 @@ class ContextWindowManager:
             self.stats.last_prune_timestamp = datetime.now(timezone.utc)
 
         self._update_stats()
-
-    async def prune_async(self) -> int:
-        """Async version of forced prune with asyncio.Lock.
-
-
-        Returns:
-            Number of messages pruned
-        """
-        async with asyncio.Lock():
-            before = sum(1 for m in self.messages if not m.is_pruned)
-            self._prune_if_needed()
-            after = sum(1 for m in self.messages if not m.is_pruned)
-            return before - after
 
     def validate_coherence(self) -> bool:
         """Validate conversation coherence after pruning.
@@ -425,3 +316,75 @@ class ContextWindowManager:
         self.messages.clear()
         self._total_pruning_events = 0
         self._update_stats()
+        self._auto_save()
+
+    def save(self) -> None:
+        """Persist context history to disk.
+
+        Saves all messages (including pruned ones) to JSON file.
+        Creates parent directories if needed.
+        """
+        import json
+        Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "version": 1,
+            "max_tokens": self.max_tokens,
+            "model": self.model,
+            "total_pruning_events": self._total_pruning_events,
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "timestamp": m.timestamp.isoformat(),
+                    "importance": m.importance,
+                    "tokens": m.tokens,
+                    "is_grounding": m.is_grounding,
+                    "is_pruned": m.is_pruned,
+                    "priority_tier": m.priority_tier,
+                }
+                for m in self.messages
+            ],
+        }
+        Path(self.storage_path).write_text(json.dumps(data, indent=2))
+
+    def load(self) -> None:
+        """Load context history from disk.
+
+        Called automatically on init (if storage_path is set).
+        Can be called manually to reload.
+        Silently ignores missing or corrupt files.
+        """
+        if self.storage_path is None:
+            return
+        import json
+        path = Path(self.storage_path)
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text())
+            self.messages = []
+            for m_data in data.get("messages", []):
+                ts = m_data["timestamp"]
+                if isinstance(ts, str):
+                    ts = datetime.fromisoformat(ts)
+                self.messages.append(ContextMessage(
+                    id=m_data["id"],
+                    role=m_data["role"],
+                    content=m_data["content"],
+                    timestamp=ts,
+                    importance=m_data.get("importance", 0.5),
+                    tokens=m_data.get("tokens", 0),
+                    is_grounding=m_data.get("is_grounding", False),
+                    is_pruned=m_data.get("is_pruned", False),
+                    priority_tier=m_data.get("priority_tier", 2),
+                ))
+            self._total_pruning_events = data.get("total_pruning_events", 0)
+            self._update_stats()
+        except (json.JSONDecodeError, KeyError, ValueError, OSError):
+            pass  # Start fresh on corruption
+
+    def _auto_save(self) -> None:
+        """Auto-save after mutations if storage path is configured."""
+        if self.storage_path:
+            self.save()

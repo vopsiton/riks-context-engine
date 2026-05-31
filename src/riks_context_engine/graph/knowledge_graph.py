@@ -1,18 +1,15 @@
 """Knowledge graph - entities and their relationships with semantic search."""
 
 import json
-import logging
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from math import sqrt
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
-from riks_context_engine.memory.embedding import get_embedder
-
-logger = logging.getLogger(__name__)
+from riks_context_engine.memory.embedding import OllamaEmbedder, get_embedder  # noqa: F401
 
 
 class EmbedderProtocol(Protocol):
@@ -153,9 +150,7 @@ class KnowledgeGraph:
 
         conn.close()
 
-    def add_entity(
-        self, name: str, entity_type: EntityType, properties: dict | None = None
-    ) -> Entity:
+    def add_entity(self, name: str, entity_type: EntityType, properties: dict | None = None) -> Entity:
         """Add an entity to the graph."""
         entity = Entity(
             id=f"{entity_type.value}_{name.lower().replace(' ', '_')}",
@@ -229,9 +224,7 @@ class KnowledgeGraph:
         conn.commit()
         conn.close()
 
-    def query(
-        self, entity_name: str | None = None, relationship_type: RelationshipType | None = None
-    ) -> list[Entity | Relationship]:
+    def query(self, entity_name: str | None = None, relationship_type: RelationshipType | None = None) -> list[Entity | Relationship]:
         """Query the knowledge graph by entity name or relationship type.
 
         Args:
@@ -273,6 +266,7 @@ class KnowledgeGraph:
         if entity_id not in self._entities:
             return []
 
+
         results: list[tuple[Entity, Relationship]] = []
         visited: set[str] = {entity_id}
         queue: list[tuple[str, int]] = [(entity_id, 0)]
@@ -310,9 +304,7 @@ class KnowledgeGraph:
             if rel.from_entity_id == entity_id or rel.to_entity_id == entity_id
         ]
 
-    def find_path(
-        self, from_entity_id: str, to_entity_id: str, max_depth: int = 3
-    ) -> list[Relationship] | None:
+    def find_path(self, from_entity_id: str, to_entity_id: str, max_depth: int = 3) -> list[Relationship] | None:
         """Find a path between two entities using BFS.
 
 
@@ -376,6 +368,7 @@ class KnowledgeGraph:
         if not self._entities:
             return []
 
+
         emb_service = embedder or get_embedder()
 
         try:
@@ -384,18 +377,9 @@ class KnowledgeGraph:
                 query_vec = query_emb.embedding
             else:
                 query_vec = query_emb  # fallback for raw list responses
-        except Exception as exc:
-            logger.warning(
-                "Embedder failed (%s), falling back to keyword search: %s",
-                type(exc).__name__,
-                exc,
-            )
+        except Exception:
+            # If embedding service unavailable, fall back to keyword match
             return self._keyword_search(query, top_k)
-
-        # Store embedder reference so _get_entity_embedding uses the same one.
-        # This avoids dimension mismatches when a test-provided FakeEmbedder
-        # has different dimensionality than the global get_embedder().
-        self._emb_embedder = emb_service
 
         scored: list[tuple[Entity, float]] = []
         for entity in self._entities.values():
@@ -412,7 +396,7 @@ class KnowledgeGraph:
         """Get cached embedding vector for an entity, computing if needed."""
         cache_key = f"_emb_{entity.id}"
         if hasattr(self, cache_key):
-            return cast("list[float] | None", getattr(self, cache_key))
+            return getattr(self, cache_key)
 
         # Build descriptive text from entity properties
         parts = [entity.name]
@@ -421,8 +405,8 @@ class KnowledgeGraph:
         text = ", ".join(parts)
 
         try:
-            result = self._emb_embedder.embed(text)
-            vec: list[float] | None = getattr(result, "embedding", None)
+            result = get_embedder().embed(text)
+            vec = result.embedding if hasattr(result, "embedding") else result
             setattr(self, cache_key, vec)
             return vec
         except Exception:

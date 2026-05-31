@@ -1,5 +1,6 @@
 """Tests for knowledge graph module."""
 
+
 from riks_context_engine.graph.knowledge_graph import (
     EntityType,
     KnowledgeGraph,
@@ -45,7 +46,6 @@ class TestKnowledgeGraph:
 
     def test_query_by_relationship_type(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -57,7 +57,6 @@ class TestKnowledgeGraph:
 
     def test_expand(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -70,7 +69,6 @@ class TestKnowledgeGraph:
 
     def test_find_path(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -92,7 +90,6 @@ class TestKnowledgeGraph:
 
     def test_get_relationships(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -106,7 +103,6 @@ class TestKnowledgeGraph:
 class TestSemanticSearch:
     def test_semantic_search_returns_scored_entities(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -128,7 +124,6 @@ class TestSemanticSearch:
 
     def test_keyword_search_score(self):
         import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         kg = KnowledgeGraph(db_path)
@@ -142,12 +137,9 @@ class TestSemanticSearch:
 class FakeEmbedder:
     """Fake embedder that returns predictable vectors for testing."""
 
-    # Match standard embedding dimension used by real embedders (e.g. Ollama nomic-embed-text)
-    DIM = 384
-
     def embed(self, text: str):
-        # Return a DIM-element vector with deterministic values
-        vec = [hash(f"{text}_{i}") % 100 / 100.0 for i in range(self.DIM)]
+        # Return a 3-element vector based on text content
+        vec = [hash(text) % 100 / 100.0, len(text) / 20.0, ord(text[0]) / 127.0]
         return FakeEmbeddingResult(vec)
 
 
