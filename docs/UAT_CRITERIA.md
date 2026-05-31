@@ -2,7 +2,7 @@
 
 **Report to:** Rik (chief agent)
 **Rule:** UAT pass olmadan PR merge YASAK
-**Last Updated:** 2026-04-19
+**Last Updated:** 2026-05-31
 
 ---
 
@@ -22,7 +22,7 @@
 
 **Priority:** P0
 **Branch:** `fix/sql-injection-48`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** Tüm DB query'leri parameterized statements ile yeniden yazılacak
@@ -108,7 +108,7 @@ def test_sql_injection_regression():
 
 **Priority:** P0
 **Branch:** `fix/thread-safe-sqlite-51`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** SemanticMemory ve KnowledgeGraph'te SQLite race condition'lar giderilecek
@@ -214,7 +214,7 @@ def test_connection_cleanup():
 
 **Priority:** P1
 **Branch:** `fix/cors-patch-head-49`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** CORS middleware'ine PATCH ve HEAD method'ları eklenecek
@@ -292,7 +292,7 @@ def test_cors_credentials():
 
 **Priority:** P1
 **Branch:** `fix/token-estimation-50`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** ContextWindowManager token estimation'i daha doğru hale getirilecek
@@ -400,7 +400,7 @@ def test_token_estimation_cjk():
 
 **Priority:** P1
 **Branch:** `fix/kg-silent-fallback-52`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** Embedder unavailableken graceful degradation + warn log
@@ -497,7 +497,7 @@ def test_kg_keyword_fallback_results():
 
 **Priority:** P1
 **Branch:** `fix/memory-import-schema-53`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** Import edilen manifest'in schema validation'ı (version, required fields)
@@ -612,7 +612,7 @@ def test_import_valid_manifest():
 
 **Priority:** P2
 **Branch:** `fix/cwmanager-async-54`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** ContextWindowManager async method'ları eklenecek (add_async, prune_async)
@@ -688,7 +688,7 @@ async def test_concurrent_adds_async():
 
 **Priority:** P2
 **Branch:** `fix/test-coverage-55`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** Coverage gap'leri kapatılacak (export, graph, reflection)
@@ -754,7 +754,7 @@ def test_parse_manifest_uncovered():
 
 **Priority:** P2
 **Branch:** `feature/rate-limiting-56`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** API rate limiting (per-IP, per-token)
@@ -838,7 +838,7 @@ def test_rate_limit_burst():
 
 **Priority:** P2
 **Branch:** `fix/reflection-persistence-58`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** ReflectionAnalyzer lessons'ları disk'e persist edilecek
@@ -941,7 +941,7 @@ def test_duplicate_lesson_merge():
 
 **Priority:** P2
 **Branch:** `fix/semantic-recall-on-60`
-**Status:** TODO
+**Status:** DONE
 
 #### Scope
 - **Yapılıyor:** SemanticMemory.recall() linear scan → indexed search
