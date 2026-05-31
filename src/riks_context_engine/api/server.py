@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import os
 import time
+import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from threading import Lock
-from typing import Annotated, AsyncGenerator, Literal
+from typing import Annotated, Any, AsyncGenerator, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -146,6 +150,331 @@ _episodic_memory: EpisodicMemory | None = None
 _semantic_memory: SemanticMemory | None = None
 _procedural_memory: ProceduralMemory | None = None
 
+# Module-level context window manager for WebSocket streaming
+_context_manager: "ContextWindowManager | None" = None  # noqa: F821
+
+
+def _set_context_manager(mgr: "ContextWindowManager | None") -> None:  # noqa: F821
+    """Set the module-level context manager (called by lifespan)."""
+    global _context_manager
+    _context_manager = mgr
+
+
+def _get_context_manager() -> "ContextWindowManager | None":  # noqa: F821
+    """Get the module-level context manager."""
+    return _context_manager
+
+
+# ─── WebSocket Context Streaming ───────────────────────────────────────────────
+
+logger = logging.getLogger(__name__)
+
+_WS_HEARTBEAT_INTERVAL = 30  # seconds
+_WS_SUBSCRIBE_TIMEOUT = 5.0  # seconds to wait for subscription ack
+
+
+class WSClientMessage(BaseModel):
+    """Incoming message types from WebSocket client."""
+    type: Literal["subscribe", "unsubscribe", "ping"]
+    session_id: str | None = None
+    include_stats: bool = True
+
+
+class WSContextUpdate(BaseModel):
+    """Context update pushed to WebSocket clients."""
+    type: Literal[
+        "context_update",
+        "stats_update",
+        "pruning_event",
+        "heartbeat",
+        "error",
+        "subscribed",
+        "unsubscribed",
+    ]
+    session_id: str | None = None
+    messages: list[dict[str, Any]] = []
+    stats: dict[str, Any] | None = None
+    pruned_count: int = 0
+    detail: str | None = None
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+
+
+class WebSocketContextStreamer:
+    """Manages WebSocket client connections for context streaming.
+
+    Clients connect to /ws/v1/context/stream and subscribe to receive
+    real-time context window updates. Multiple clients can be subscribed
+    simultaneously.
+
+    Usage:
+        >>> streamer = WebSocketContextStreamer()
+        >>> await streamer.connect(websocket)
+        >>> # broadcast a context update
+        >>> await streamer.broadcast_context_update()
+    """
+
+    def __init__(self) -> None:
+        self._connections: dict[str, WebSocket] = {}  # client_id -> WebSocket
+        self._subscriptions: dict[str, str] = {}  # client_id -> session_id
+        self._lock = asyncio.Lock()
+        self._heartbeat_tasks: dict[str, asyncio.Task[None]] = {}
+
+    @property
+    def client_count(self) -> int:
+        """Number of connected WebSocket clients."""
+        return len(self._connections)
+
+    async def connect(self, websocket: WebSocket) -> str:
+        """Accept a new WebSocket connection.
+
+        Args:
+            websocket: The WebSocket connection
+
+        Returns:
+            Unique client_id for this connection
+        """
+        await websocket.accept()
+        client_id = str(uuid.uuid4())[:8]
+        async with self._lock:
+            self._connections[client_id] = websocket
+            self._subscriptions[client_id] = ""
+        logger.debug(f"WebSocket client connected: {client_id} (total: {self.client_count})")
+        return client_id
+
+    async def disconnect(self, client_id: str) -> None:
+        """Remove a client connection.
+
+        Args:
+            client_id: Client identifier
+        """
+        async with self._lock:
+            self._connections.pop(client_id, None)
+            self._subscriptions.pop(client_id, None)
+            task = self._heartbeat_tasks.pop(client_id, None)
+            if task and not task.done():
+                task.cancel()
+        logger.debug(f"WebSocket client disconnected: {client_id} (total: {self.client_count})")
+
+    async def subscribe(self, client_id: str, session_id: str) -> None:
+        """Subscribe a client to context updates for a session.
+
+        Args:
+            client_id: Client identifier
+            session_id: Session to subscribe to (empty = all sessions)
+        """
+        async with self._lock:
+            self._subscriptions[client_id] = session_id
+        await self._send(
+            client_id,
+            WSContextUpdate(
+                type="subscribed",
+                session_id=session_id,
+                detail=f"Subscribed to context updates for session: {session_id or 'all'}",
+            ),
+        )
+        logger.debug(f"Client {client_id} subscribed to session: {session_id or 'all'}")
+
+    async def unsubscribe(self, client_id: str) -> None:
+        """Unsubscribe a client from context updates.
+
+        Args:
+            client_id: Client identifier
+        """
+        async with self._lock:
+            self._subscriptions[client_id] = ""
+        await self._send(
+            client_id,
+            WSContextUpdate(type="unsubscribed", detail="Unsubscribed from context updates"),
+        )
+
+    async def broadcast_context_update(
+        self,
+        messages: list[dict[str, Any]],
+        stats: dict[str, Any] | None = None,
+        pruned_count: int = 0,
+        session_id: str | None = None,
+    ) -> None:
+        """Broadcast a context update to all subscribed clients.
+
+        Args:
+            messages: List of context message dicts
+            stats: Optional context window statistics
+            pruned_count: Number of messages pruned in this update
+            session_id: Optional session ID to filter subscribers
+        """
+        update = WSContextUpdate(
+            type="context_update",
+            session_id=session_id,
+            messages=messages,
+            stats=stats,
+            pruned_count=pruned_count,
+        )
+        async with self._lock:
+            # Filter by session if specified
+            target_clients = {
+                cid: ws
+                for cid, ws in self._connections.items()
+                if session_id is None or self._subscriptions.get(cid) in (session_id, "")
+            }
+
+        tasks = [self._send(cid, update) for cid, ws in target_clients.items()]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def broadcast_stats_update(self, stats: dict[str, Any]) -> None:
+        """Broadcast a stats-only update (no messages changed).
+
+        Args:
+            stats: Context window statistics dict
+        """
+        update = WSContextUpdate(type="stats_update", stats=stats)
+        async with self._lock:
+            tasks = [self._send(cid, update) for cid in self._connections]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def broadcast_pruning_event(self, pruned_count: int, stats: dict[str, Any]) -> None:
+        """Broadcast a pruning event notification.
+
+        Args:
+            pruned_count: Number of messages pruned
+            stats: Updated context window statistics
+        """
+        update = WSContextUpdate(
+            type="pruning_event",
+            pruned_count=pruned_count,
+            stats=stats,
+            detail=f"Pruned {pruned_count} messages from context window",
+        )
+        async with self._lock:
+            tasks = [self._send(cid, update) for cid in self._connections]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def handle_client_message(self, client_id: str, raw: bytes) -> None:
+        """Process an incoming message from a WebSocket client.
+
+        Args:
+            client_id: Client identifier
+            raw: Raw message bytes
+        """
+        try:
+            data = json.loads(raw.decode())
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            await self._send(
+                client_id,
+                WSContextUpdate(
+                    type="error",
+                    detail="Invalid JSON message",
+                ),
+            )
+            return
+
+        msg_type = data.get("type", "")
+
+        if msg_type == "subscribe":
+            session_id = data.get("session_id", "") or ""
+            await self.subscribe(client_id, session_id)
+        elif msg_type == "unsubscribe":
+            await self.unsubscribe(client_id)
+        elif msg_type == "ping":
+            await self._send(
+                client_id,
+                WSContextUpdate(type="heartbeat", detail="pong"),
+            )
+        else:
+            await self._send(
+                client_id,
+                WSContextUpdate(
+                    type="error",
+                    detail=f"Unknown message type: {msg_type}",
+                ),
+            )
+
+    async def _send(self, client_id: str, update: WSContextUpdate) -> None:
+        """Send a message to a specific client.
+
+        Args:
+            client_id: Target client ID
+            update: Update payload to send
+        """
+        try:
+            async with self._lock:
+                websocket = self._connections.get(client_id)
+            if websocket is None:
+                return
+            await websocket.send_text(update.model_dump_json())
+        except Exception as exc:  # pragma: no cover — connection may have dropped
+            logger.warning(f"Failed to send to client {client_id}: {exc}")
+            await self.disconnect(client_id)
+
+
+# Global streamer instance (created per-app in lifespan)
+_ws_streamer: WebSocketContextStreamer | None = None
+
+
+def _get_streamer() -> WebSocketContextStreamer:
+    """Get the global WebSocket streamer instance."""
+    if _ws_streamer is None:
+        raise RuntimeError("WebSocket streamer not initialized")
+    return _ws_streamer
+
+
+async def websocket_context_stream(websocket: WebSocket) -> None:
+    """WebSocket endpoint for real-time context window streaming.
+
+    Clients connect and send JSON messages to subscribe/unsubscribe:
+
+        # Subscribe to all context updates:
+        {{"type": "subscribe", "session_id": ""}}
+
+        # Subscribe to a specific session:
+        {{"type": "subscribe", "session_id": "my-session-123"}}
+
+        # Unsubscribe:
+        {{"type": "unsubscribe"}}
+
+        # Heartbeat:
+        {{"type": "ping"}}
+
+    Server pushes context updates as JSON:
+
+        # Context update:
+        {{"type": "context_update", "messages": [...], "stats": {{...}}, "timestamp": "..."}}
+
+        # Pruning event:
+        {{"type": "pruning_event", "pruned_count": 3, "stats": {{...}}, "detail": "..."}}
+
+        # Stats update:
+        {{"type": "stats_update", "stats": {{...}}}}
+
+        # Heartbeat response:
+        {{"type": "heartbeat", "detail": "pong"}}
+
+    """
+    streamer = _get_streamer()
+    client_id = await streamer.connect(websocket)
+
+    # Send initial connection confirmation
+    await streamer._send(
+        client_id,
+        WSContextUpdate(
+            type="subscribed",
+            detail=f"Connected. Send {{\"type\": \"subscribe\"}} to receive updates.",
+        ),
+    )
+
+    try:
+        while True:
+            raw = await websocket.receive_bytes()
+            await streamer.handle_client_message(client_id, raw)
+    except WebSocketDisconnect:
+        logger.debug(f"WebSocket client {client_id} disconnected")
+    except Exception as exc:
+        logger.warning(f"WebSocket error for client {client_id}: {exc}")
+    finally:
+        await streamer.disconnect(client_id)
+
 
 def _get_allowed_origins() -> list[str]:
     """Parse ALLOWED_ORIGINS env var into a list of origins."""
@@ -168,19 +497,22 @@ def _build_cors_config() -> dict[str, list[str] | bool]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    global _episodic_memory, _semantic_memory, _procedural_memory
+    global _episodic_memory, _semantic_memory, _procedural_memory, _ws_streamer
     data_dir = os.environ.get("DATA_DIR", "data")
     _episodic_memory = EpisodicMemory(storage_path=f"{data_dir}/episodic.json")
     _semantic_memory = SemanticMemory(db_path=f"{data_dir}/semantic.db")
     _procedural_memory = ProceduralMemory(storage_path=f"{data_dir}/procedural.json")
+    _ws_streamer = WebSocketContextStreamer()
+    logger.info(f"WebSocket streamer initialized with {len(_ws_streamer._connections)} connections")
     yield
     _episodic_memory = _semantic_memory = _procedural_memory = None
+    _ws_streamer = None
 
 
 app = FastAPI(
     title="Rik's Context Engine API",
     description="HTTP API for AI context and memory management",
-    version="0.2.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -192,7 +524,8 @@ app.add_middleware(
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(APIKeyAuthMiddleware)
 
-
+# Register WebSocket endpoint (after app is defined)
+app.add_api_websocket_route("/ws/v1/context/stream", websocket_context_stream)
 
 @app.get("/health")
 def health() -> dict[str, str]:
