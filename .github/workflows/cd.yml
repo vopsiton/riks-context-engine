@@ -115,7 +115,6 @@ jobs:
           tags: |
             type=sha,prefix=sha-
             type=ref,event=branch
-            type=pr,event=pr
             type=semver,pattern={{version}}
             type=sha,prefix=,suffix=-${{ github.sha }},event=workflow
 
@@ -241,7 +240,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
-            latest
+            type=raw,enable=true,value=latest
 
       - name: Build and push production image
         uses: docker/build-push-action@v6
