@@ -94,6 +94,7 @@ class ContextWindowManager:
         self.max_tokens = max_tokens
         self.usable_tokens = max_tokens - (2 * TOKEN_BUFFER_PER_SIDE)
         self.model = model
+        self._async_lock = asyncio.Lock()
         self.messages: list[ContextMessage] = []
         self._total_pruning_events = 0
         self.stats = ContextStats(
@@ -159,7 +160,7 @@ class ContextWindowManager:
         Returns:
             Created ContextMessage
         """
-        async with asyncio.Lock():
+        async with self._async_lock:
             return self.add(role, content, importance, is_grounding, priority_tier)
 
     def get_messages(self, include_pruned: bool = False) -> list[ContextMessage]:
