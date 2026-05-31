@@ -259,7 +259,7 @@ class ContextWindowManager:
         Args:
             summarizer: A :class:`SemanticSummarizer` instance.
         """
-        self._semantic_summarizer = summarizer  # type: ignore[attr-defined]
+        self._semantic_summarizer = summarizer
 
     def run_summarization(self, force: bool = False) -> SummarizationResult:
         """Run semantic summarization on TIER_3 messages.
@@ -279,7 +279,7 @@ class ContextWindowManager:
         if summarizer is None:
             msg = "no summarizer registered — call set_summarizer() first"
             raise RuntimeError(msg)
-        return summarizer.summarize_tier3(self, force=force)
+        return summarizer.summarize_tier3(self, force=force)  # type: ignore[no-any-return]
 
     def clear(self) -> None:
         """Clear all messages from context window."""

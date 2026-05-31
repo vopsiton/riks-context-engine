@@ -234,7 +234,7 @@ class SemanticSummarizer:
 
             # Store summary data on the first message in the block
             first_msg = block_msgs[0]
-            first_msg.summary = SummarizedBlock(
+            first_msg.summary = SummarizedBlock(  # type: ignore[attr-defined]
                 summary_text=summary_text,
                 original_ids=block,
                 original_token_count=original_tokens,
