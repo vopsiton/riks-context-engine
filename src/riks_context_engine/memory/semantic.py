@@ -145,18 +145,26 @@ class SemanticMemory:
         """Query semantic memory by subject and/or predicate."""
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
-            if subject and predicate:
+            # Escape SQL LIKE wildcards in user input so searches are literal
+            # Use ESCAPE clause to treat \ as escape character for LIKE patterns
+            def _escape(s: str) -> str:
+                return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+            esc_subject = _escape(subject) if subject else None
+            esc_predicate = _escape(predicate) if predicate else None
+
+            if esc_subject and esc_predicate:
                 rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE subject LIKE ? AND predicate LIKE ?",
-                    (f"%{subject}%", f"%{predicate}%"),
+                    "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE '\\' AND predicate LIKE ? ESCAPE '\\'",
+                    (f"%{esc_subject}%", f"%{esc_predicate}%"),
                 ).fetchall()
-            elif subject:
+            elif esc_subject:
                 rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE subject LIKE ?", (f"%{subject}%",)
+                    "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE '\\'", (f"%{esc_subject}%",)
                 ).fetchall()
-            elif predicate:
+            elif esc_predicate:
                 rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE predicate LIKE ?", (f"%{predicate}%",)
+                    "SELECT * FROM semantic_entries WHERE predicate LIKE ? ESCAPE '\\'", (f"%{esc_predicate}%",)
                 ).fetchall()
             else:
                 rows = conn.execute("SELECT * FROM semantic_entries").fetchall()

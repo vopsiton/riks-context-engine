@@ -162,7 +162,7 @@ class TierManager:
             with self.semantic._conn() as conn:
                 rows = conn.execute("SELECT id FROM semantic_entries").fetchall()
             for row in rows:
-                if self._demote_semantic_entry(row["id"]):
+                if self._demote_semantic_entry(row[0]):
                     demoted += 1
 
         return {"promoted": promoted, "demoted": demoted}

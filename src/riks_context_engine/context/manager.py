@@ -245,26 +245,55 @@ class ContextWindowManager:
         self.messages = []
         self._update_stats()
 
-    def get_summary(self) -> dict[str, int | float]:
+    def mark_below_threshold(self, threshold: int = 0) -> list[ContextMessage]:
+        """Return non-pruned messages whose token count is below threshold.
+
+        Args:
+            threshold: Token count threshold (default 0 = all messages)
+
+        Returns:
+            List of messages with tokens below threshold that are not pruned
+        """
+        return [m for m in self.messages if not m.is_pruned and m.tokens < threshold]
+
+    def reset(self) -> None:
+        """Clear all messages and reset statistics to initial state."""
+        self.messages = []
+        self.stats = ContextStats(
+            current_tokens=0,
+            max_tokens=self.max_tokens,
+            messages_count=0,
+            active_messages_count=0,
+            pruning_count=0,
+            last_prune_timestamp=None,
+        )
+        self._total_pruning_events = 0
+
+    def get_summary(self) -> dict[str, int | float | str | bool]:
         """Get a summary of the current context window state.
 
         Returns:
             Dictionary with context window statistics
         """
         active = self.get_active_tokens()
+        pruned = sum(1 for m in self.messages if m.is_pruned)
         return {
             "current_tokens": self.stats.current_tokens,
             "max_tokens": self.max_tokens,
             "usable_tokens": self.usable_tokens,
             "tokens_remaining": self.tokens_remaining(),
             "messages_count": self.stats.messages_count,
+            "active_messages": self.stats.active_messages_count,
             "active_messages_count": self.stats.active_messages_count,
+            "pruned_messages": pruned,
             "pruning_count": self.stats.pruning_count,
+            "pruning_events": self._total_pruning_events,
             "utilization": (
                 f"{(self.stats.current_tokens / self.usable_tokens * 100):.1f}%"
                 if self.usable_tokens > 0
                 else "0%"
             ),
+            "needs_pruning": self.needs_pruning(),
         }
 
     def load(self) -> None:
