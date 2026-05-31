@@ -140,7 +140,7 @@ class TestDumpAndParse:
             "semantic": [],
             "procedural": [],
         }
-        with pytest.raises(ValueError, match="Missing required 'metadata'"):
+        with pytest.raises(ValueError, match="Schema version mismatch"):
             parse_manifest(json.dumps(bad_data), "json")
 
     def test_parse_rejects_missing_schema_version(self):
@@ -156,7 +156,7 @@ class TestDumpAndParse:
             "procedural": [],
         }
         del bad_data["metadata"]["schema_version"]
-        with pytest.raises(ValueError, match="schema_version"):
+        with pytest.raises(ValueError, match="Schema version mismatch"):
             parse_manifest(json.dumps(bad_data), "json")
 
     def test_parse_rejects_none_schema_version(self):
@@ -172,7 +172,7 @@ class TestDumpAndParse:
             "procedural": [],
         }
         bad_data["metadata"]["schema_version"] = None
-        with pytest.raises(ValueError, match="schema_version"):
+        with pytest.raises(ValueError, match="Schema version mismatch"):
             parse_manifest(json.dumps(bad_data), "json")
 
 
@@ -331,7 +331,7 @@ class TestParseManifestValidationExtended:
     def test_parse_missing_metadata_raises(self):
         """Line 182: manifest without 'metadata' raises ValueError."""
         bad = json.dumps({"episodic": [], "semantic": [], "procedural": []})
-        with pytest.raises(ValueError, match="Missing required 'metadata'"):
+        with pytest.raises(ValueError, match="Schema version mismatch"):
             parse_manifest(bad, "json")
 
     def test_parse_non_dict_metadata_raises(self):

@@ -25,14 +25,19 @@ class ContextMessage:
     # Priority tiers for pruning decisions
     priority_tier: int = 1  # 0=highest (never prune), 1=high, 2=medium, 3=low
 
+    # Priority inheritance fields
+    parent_id: str | None = None
+    thread_id: str | None = None
+    _inherited_importance: float | None = None
+
     def should_preserve(self) -> bool:
         """Check if message should be preserved regardless of token pressure."""
         return self.is_grounding or self.priority_tier == 0
 
     def pruning_score(self) -> float:
         """Lower score = more likely to be pruned."""
-        # Inverse importance, normalize token cost
-        return -(self.importance * 100) - (self.tokens / 1000)
+        effective_importance = self._inherited_importance or self.importance
+        return -(effective_importance * 100) - (self.tokens / 1000)
 
 
 @dataclass
@@ -157,6 +162,28 @@ class ContextWindowManager:
         """
         async with asyncio.Lock():
             return self.add(role, content, importance, is_grounding, priority_tier)
+
+    def propagate_priority(self, message_id: str) -> None:
+        """Propagate parent priority to child messages in the same thread.
+
+        When a message has a parent_id set, this method looks up the parent
+        and propagates its importance to the child if the parent is more
+        important. This ensures child messages maintain thread context.
+
+        Args:
+            message_id: ID of the message to propagate priority for
+        """
+        # Find the message
+        msg = next((m for m in self.messages if m.id == message_id), None)
+        if not msg or not msg.parent_id:
+            return
+
+        # Find parent and propagate
+        parent = next((m for m in self.messages if m.id == msg.parent_id), None)
+        if parent and parent.importance > msg.importance:
+            msg.importance = parent.importance
+            msg._inherited_importance = parent.importance
+            msg.priority_tier = min(msg.priority_tier, parent.priority_tier)
 
     def get_messages(self, include_pruned: bool = False) -> list[ContextMessage]:
         """Get messages in context window.
