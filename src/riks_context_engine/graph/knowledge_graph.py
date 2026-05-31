@@ -12,7 +12,7 @@ from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
-from riks_context_engine.memory.embedding import OllamaEmbedder, get_embedder  # noqa: F401
+from riks_context_engine.memory.embedding import OllamaEmbedder, get_embedder  # noqa: F401, E402
 
 
 class EmbedderProtocol(Protocol):

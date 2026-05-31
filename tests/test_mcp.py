@@ -84,7 +84,7 @@ class TestBuildErrorResponse:
 
 class TestToolSchemas:
     def test_all_tools_have_required_fields(self) -> None:
-        for name, schema in TOOL_SCHEMAS.items():
+        for _name, schema in TOOL_SCHEMAS.items():
             assert "name" in schema
             assert "description" in schema
             assert "inputSchema" in schema

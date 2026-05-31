@@ -8,17 +8,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from riks_context_engine.context.manager import (
-    CHAR_PER_TOKEN,
     TOKEN_BUFFER_PER_SIDE,
     ContextMessage,
     ContextWindowManager,
-    TIER_0_PROTECTED,
-    TIER_1_HIGH,
-    TIER_2_MEDIUM,
-    TIER_3_LOW,
-    ContextStats,
 )
-
 
 # ─── ContextMessage ─────────────────────────────────────────────────────────────
 
@@ -364,7 +357,7 @@ class TestPruneAsync:
         big = "x" * 2000
         for i in range(50):
             mgr.add("user", f"{big}{i}", importance=0.1, priority_tier=3)
-        results = await asyncio.gather(mgr.prune_async(), mgr.prune_async())
+        await asyncio.gather(mgr.prune_async(), mgr.prune_async())
         assert mgr.tokens_remaining() >= 0
 
 

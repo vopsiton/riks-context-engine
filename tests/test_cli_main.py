@@ -14,8 +14,8 @@ class TestCLI:
 
         sys.argv = ["riks", "--version"]
         result = main()
-        captured = capsys.readouterr()
-        assert "riks-context-engine" in captured.out or result == 0
+        capsys.readouterr()
+        assert result == 0
 
     def test_main_no_args(self, capsys):
         """Test riks with no args shows help."""
@@ -25,7 +25,7 @@ class TestCLI:
 
         sys.argv = ["riks"]
         result = main()
-        captured = capsys.readouterr()
+        capsys.readouterr()
         # Returns 1, prints help
         assert result == 1
 

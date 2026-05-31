@@ -9,7 +9,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from threading import Lock
-from typing import Any, Annotated, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -28,7 +28,6 @@ from riks_context_engine.memory.export import (
 )
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
-
 
 # ─── LLM Client (LM-Studio) ─────────────────────────────────────────────────────────
 _LMS_URL = os.environ.get("LMS_URL", "http://localhost:1234/v1")

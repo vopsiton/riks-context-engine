@@ -95,12 +95,6 @@ jobs:
               return;
             }
 
-            // Get project columns
-            const columns = await github.rest.projects.listColumns({
-              owner, repo,
-              project_number: projectNumber
-            });
-
             // Auto-assign to Sprint based on labels
             const labels = context.payload.issue?.labels || context.payload.pull_request?.labels || [];
             const hasP0 = labels.some(l => l.name === 'P0');
@@ -108,7 +102,20 @@ jobs:
 
             const targetColumn = hasP0 || hasP1 ? 'Sprint' : 'Backlog';
 
-            console.log(`Would assign to: ${targetColumn}`);
+            // Get project columns — gracefully skip if GitHub Projects is not enabled
+            try {
+              const columns = await github.rest.projects.listColumns({
+                owner, repo,
+                project_number: projectNumber
+              });
+              console.log(`Would assign to: ${targetColumn}`);
+            } catch (err) {
+              if (err.status === 404) {
+                console.log('GitHub Projects not enabled or project not found — skipping board sync');
+              } else {
+                throw err;
+              }
+            }
 
   # ===== Issue Closed - Update Stats ===== #
   issue-closed:

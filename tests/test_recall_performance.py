@@ -25,7 +25,7 @@ class TestRecallPerformance:
         times = []
         for _ in range(5):
             start = time.perf_counter()
-            results = mem.recall("entity_a")
+            mem.recall("entity_a")
             elapsed = time.perf_counter() - start
             times.append(elapsed)
 

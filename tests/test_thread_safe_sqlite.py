@@ -232,10 +232,10 @@ class TestThreadSafeSQLite:
         for i in range(100):
             mem.add(subject=f"entry_{i}", predicate="type", object=f"obj_{i}")
 
-        for i in range(50):
+        for _i in range(50):
             mem.query(subject="entry")
 
-        for i in range(50):
+        for _i in range(50):
             mem.recall("entry")
 
         # Force garbage collection
