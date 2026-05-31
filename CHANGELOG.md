@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.1] - 2026-05-31
 
+### Fixed
+- **`fix(version)`: `__version__` alignment** — `__init__.py` declared `0.1.0` but `pyproject.toml` declared `0.2.0`. Updated `__version__` to `0.2.0` for consistency across package and CLI ([opsiton-team#cron-2026-05-31])
+
 ### Added
 - **`feat(context)`: Coherence validation** — `validate_coherence()` and `get_coherence_score()` methods for measuring and validating context window coherence ([#85](https://github.com/vopsiton/riks-context-engine/pull/85))
 - **`feat(memory)`: JSON/YAML export/import** — Full memory portability across models and sessions ([#36](https://github.com/vopsiton/riks-context-engine/issues/36))
