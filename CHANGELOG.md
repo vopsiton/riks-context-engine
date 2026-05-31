@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.1] - 2026-05-31
 
 ### Added
+- **`feat(context)`: Coherence validation** — `validate_coherence()` and `get_coherence_score()` methods for measuring and validating context window coherence ([#85](https://github.com/vopsiton/riks-context-engine/pull/85))
 - **`feat(memory)`: JSON/YAML export/import** — Full memory portability across models and sessions ([#36](https://github.com/vopsiton/riks-context-engine/issues/36))
   - `export_memory()` — selective export by type, date range, and tags
   - `dump_manifest()` / `parse_manifest()` — JSON and YAML serialization
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **`fix(kg)`**: Explicit `strict=True` in `zip()` in `_cosine_similarity` (Ruff B905 — prevents silent truncation on mismatched vector lengths)
+- **`fix`: Multiple production bugs** — Various bug fixes discovered during test runs ([#82](https://github.com/vopsiton/riks-context-engine/pull/82))
 
 ### Dependencies
 - Added `pyyaml>=6.0`
