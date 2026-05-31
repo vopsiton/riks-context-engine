@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -14,11 +14,10 @@ from riks_context_engine.context.summarizer import (
     TARGET_COMPRESSION_RATIO,
     BlockSummary,
     SemanticSummarizer,
-    SummarizedBlock,
     SummarizationResult,
+    SummarizedBlock,
     _keyword_fallback_summarize,
 )
-
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -298,7 +297,7 @@ class TestSummarizeTier3Unit:
 
         with patch("riks_context_engine.context.summarizer._summarize_with_llm") as mock_llm:
             mock_llm.return_value = "Summary of three"
-            result = s.summarize_tier3(mgr, force=True)
+            _ = s.summarize_tier3(mgr, force=True)
 
         assert msgs[0].is_pruned is False  # kept (holds summary)
         assert msgs[1].is_pruned is True

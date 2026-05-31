@@ -29,12 +29,11 @@ Usage
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from riks_context_engine.context.manager import ContextMessage, ContextWindowManager
