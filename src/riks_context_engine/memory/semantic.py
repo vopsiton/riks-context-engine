@@ -205,14 +205,15 @@ class SemanticMemory:
         <MemoryType.SEMANTIC: 'semantic'>
         """
         from riks_context_engine.memory.base import MemoryEntry, MemoryType
+
         return MemoryEntry(
-            id=self.id,
+            id=self.id,  # type: ignore[attr-defined]
             type=MemoryType.SEMANTIC,
-            content=f"{self.subject} {self.predicate} {self.object or ''}",
-            importance=self.confidence,
-            embedding=self.embedding,
-            access_count=self.access_count,
-            last_accessed=self.last_accessed,
+            content=f"{self.subject} {self.predicate} {self.object or ''}",  # type: ignore[attr-defined]
+            importance=self.confidence,  # type: ignore[attr-defined]
+            embedding=self.embedding,  # type: ignore[attr-defined]
+            access_count=self.access_count,  # type: ignore[attr-defined]
+            last_accessed=self.last_accessed,  # type: ignore[attr-defined]
         )
 
     def __len__(self) -> int:

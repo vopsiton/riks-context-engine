@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     import tiktoken  # noqa: F401
@@ -400,6 +400,6 @@ class ContextWindowManager:
         validation = self.validate_coherence()
         if validation["is_coherent"]:
             return 1.0
-        score = 1.0 - (len(validation["issues"]) * 0.1)
+        score = 1.0 - (len(cast(list[str], validation["issues"])) * 0.1)
         return max(0.0, score)
 

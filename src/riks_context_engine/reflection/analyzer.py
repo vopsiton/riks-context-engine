@@ -109,7 +109,7 @@ class ReflectionAnalyzer:
     was missing.
     """
 
-    def __init__(self, semantic_memory=None, storage_path: str | None = None):  # type: ignore[no-untyped-def]
+    def __init__(self, semantic_memory=None, storage_path: str | None = None):
         self.semantic_memory = semantic_memory
         self._lessons: dict[str, Lesson] = {}
         self._mistake_counts: dict[str, int] = {}

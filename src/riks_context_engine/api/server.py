@@ -119,7 +119,7 @@ def _record_request(ip: str) -> None:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if request.url.path == "/health":
-            return await call_next(request)
+            return await call_next(request)  # type: ignore[no-any-return]
         ip = _get_client_ip(request)
         allowed, remaining, reset = _check_rate_limit(ip)
         if not allowed:
@@ -134,7 +134,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 },
             )
         _record_request(ip)
-        response = await call_next(request)
+        response: Response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(_RATE_LIMIT_REQUESTS)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset)
