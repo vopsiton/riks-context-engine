@@ -191,8 +191,6 @@ class ContextWindowManager:
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count for text.
 
-        Uses character-based estimation as approximation.
-        More accurate with tiktoken when available.
 
         Args:
             text: Text to estimate tokens for
@@ -207,7 +205,6 @@ class ContextWindowManager:
         cjk_chars = len(re.findall(r"[\u4e00-\u9fff\u3040-\u30ff]", text))
         cjk_correction = cjk_chars - cjk_chars / CHAR_PER_TOKEN
 
-        return max(1, int(base_tokens + cjk_correction))
 
     def _prune_if_needed(self) -> None:
         """Prune messages if context window is over capacity."""
