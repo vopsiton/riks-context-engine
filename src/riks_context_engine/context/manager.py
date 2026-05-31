@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from riks_context_engine.context.summarizer import SemanticSummarizer, SummarizationResult
+
 if TYPE_CHECKING:
     import tiktoken  # noqa: F401
 
@@ -243,6 +245,41 @@ class ContextWindowManager:
         self.stats.current_tokens = self.get_active_tokens()
         self.stats.messages_count = len(self.messages)
         self.stats.active_messages_count = len(active)
+
+    # ------------------------------------------------------------------
+    # Semantic summarization integration
+    # ------------------------------------------------------------------
+
+    def set_summarizer(self, summarizer: SemanticSummarizer) -> None:
+        """Register a :class:`SemanticSummarizer` for TIER_3 compression.
+
+        After calling this, the manager will use the summarizer to compress
+        TIER_3 messages instead of simply dropping them during pruning.
+
+        Args:
+            summarizer: A :class:`SemanticSummarizer` instance.
+        """
+        self._semantic_summarizer = summarizer
+
+    def run_summarization(self, force: bool = False) -> SummarizationResult:
+        """Run semantic summarization on TIER_3 messages.
+
+        Requires a summarizer to be registered via :meth:`set_summarizer`.
+
+        Args:
+            force: If True, skip the minimum-message check in the summarizer.
+
+        Returns:
+            SummarizationResult with compression stats.
+
+        Raises:
+            RuntimeError: If no summarizer is registered.
+        """
+        summarizer = getattr(self, "_semantic_summarizer", None)
+        if summarizer is None:
+            msg = "no summarizer registered — call set_summarizer() first"
+            raise RuntimeError(msg)
+        return summarizer.summarize_tier3(self, force=force)  # type: ignore[no-any-return]
 
     def clear(self) -> None:
         """Clear all messages from context window."""
