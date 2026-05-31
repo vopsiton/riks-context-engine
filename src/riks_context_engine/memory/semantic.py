@@ -245,3 +245,46 @@ class SemanticMemory:
             cur = conn.execute("DELETE FROM semantic_entries WHERE id = ?", (entry_id,))
             conn.commit()
             return cur.rowcount > 0
+
+    def update_from_cache(self, entry_id: str, data: dict) -> bool:
+        """Update an entry from Redis cache (used by write-back flush).
+
+        Args:
+            entry_id: The entry ID to update
+            data: Dict with fields to update (confidence, object, etc.)
+
+        Returns:
+            True if entry was found and updated.
+        """
+        with self._conn() as conn:
+            existing = conn.execute(
+                "SELECT 1 FROM semantic_entries WHERE id = ?", (entry_id,)
+            ).fetchone()
+            if not existing:
+                return False
+
+            updates: list[str] = []
+            params: list = []
+            if "confidence" in data:
+                updates.append("confidence = ?")
+                params.append(float(data["confidence"]))
+            if "object" in data:
+                updates.append("object = ?")
+                params.append(data["object"])
+            if "access_count" in data:
+                updates.append("access_count = ?")
+                params.append(int(data["access_count"]))
+            if "embedding" in data:
+                updates.append("embedding = ?")
+                params.append(json.dumps(data["embedding"]) if data["embedding"] else None)
+
+            if updates:
+                updates.append("last_accessed = ?")
+                params.append(datetime.now(timezone.utc).isoformat())
+                params.append(entry_id)
+                conn.execute(
+                    f"UPDATE semantic_entries SET {', '.join(updates)} WHERE id = ?",
+                    params,
+                )
+                conn.commit()
+            return True

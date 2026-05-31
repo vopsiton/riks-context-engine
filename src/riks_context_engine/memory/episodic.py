@@ -143,5 +143,31 @@ class EpisodicMemory:
             return True
         return False
 
+    def update_from_cache(self, entry_id: str, data: dict) -> bool:
+        """Update an entry from Redis cache (used by write-back flush).
+
+        Args:
+            entry_id: The entry ID to update
+            data: Dict with fields to update (content, importance, tags, etc.)
+
+        Returns:
+            True if entry was found and updated.
+        """
+        entry = self._entries.get(entry_id)
+        if not entry:
+            return False
+        if "content" in data:
+            entry.content = data["content"]
+        if "importance" in data:
+            entry.importance = max(0.0, min(1.0, float(data["importance"])))
+        if "tags" in data:
+            entry.tags = data["tags"]
+        if "embedding" in data:
+            entry.embedding = data["embedding"]
+        if "access_count" in data:
+            entry.access_count = data["access_count"]
+        self._save()
+        return True
+
     def __len__(self) -> int:
         return len(self._entries)
