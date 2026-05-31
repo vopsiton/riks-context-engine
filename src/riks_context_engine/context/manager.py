@@ -1,8 +1,17 @@
 """Context window manager - intelligent pruning and coherence."""
 
+import asyncio
+import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import tiktoken
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -75,20 +84,18 @@ class ContextWindowManager:
         >>> msg.tokens_remaining  # Show tokens left in window
     """
 
-    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max", storage_path: str | None = None):
+    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max"):
         """Initialize context window manager.
 
         Args:
             max_tokens: Maximum token capacity for the context window.
                        Actual usable tokens = max_tokens - 2 * TOKEN_BUFFER
             model: Model name for token estimation (affects encoding)
-            storage_path: Optional path for persisting context history to disk.
-                         Defaults to "data/context_history.json".
         """
         self.max_tokens = max_tokens
         self.usable_tokens = max_tokens - (2 * TOKEN_BUFFER_PER_SIDE)
         self.model = model
-        self.storage_path = storage_path  # None = no auto-persist
+        self._async_lock = asyncio.Lock()
         self.messages: list[ContextMessage] = []
         self._total_pruning_events = 0
         self.stats = ContextStats(
@@ -97,7 +104,6 @@ class ContextWindowManager:
             messages_count=0,
             active_messages_count=0,
         )
-        self.load()
 
     def add(
         self,
@@ -132,8 +138,30 @@ class ContextWindowManager:
         self.messages.append(msg)
         self._update_stats()
         self._prune_if_needed()
-        self._auto_save()
         return msg
+
+    async def add_async(
+        self,
+        role: str,
+        content: str,
+        importance: float = 0.5,
+        is_grounding: bool = False,
+        priority_tier: int = 2,
+    ) -> ContextMessage:
+        """Async version of add() with asyncio.Lock for thread-safety.
+
+        Args:
+            role: Message role ("user", "assistant", "system")
+            content: Message text content
+            importance: Importance score 0.0-1.0 (higher = more important)
+            is_grounding: True for user preferences, active projects
+            priority_tier: 0-3, lower = more protected from pruning
+
+        Returns:
+            Created ContextMessage
+        """
+        async with self._async_lock:
+            return self.add(role, content, importance, is_grounding, priority_tier)
 
     def get_messages(self, include_pruned: bool = False) -> list[ContextMessage]:
         """Get messages in context window.
@@ -173,164 +201,103 @@ class ContextWindowManager:
             Estimated token count
         """
         # Base estimate: ~4 chars per token (English average)
-        base_tokens = len(text) // CHAR_PER_TOKEN
+        base_tokens = len(text) / CHAR_PER_TOKEN
 
-        # Special handling for code blocks (less efficient encoding)
-        code_indicators = ["```", "def ", "class ", "function(", "import ", "const "]
-        if any(indicator in text for indicator in code_indicators):
-            # Code tends to use more tokens per char
-            base_tokens = int(base_tokens * 1.3)
+        # CJK characters: ~1 token per character
+        cjk_chars = len(re.findall(r"[\u4e00-\u9fff\u3040-\u30ff]", text))
+        cjk_correction = cjk_chars - cjk_chars / CHAR_PER_TOKEN
 
-        # Special handling for non-Latin scripts (more tokens per char)
-        # e.g., CJK characters are typically 1 token per 2 chars
-        if self._contains_non_latin(text):
-            base_tokens = int(len(text) / 2)
-
-        return base_tokens
-
-    def _contains_non_latin(self, text: str) -> bool:
-        """Check if text contains non-Latin characters."""
-        import re
-
-        # CJK, Arabic, Cyrillic, etc.
-        return bool(re.search(r"[\u4e00-\u9fff\u0600-\u06ff\u0400-\u04ff]", text))
-
-    def _update_stats(self) -> None:
-        """Update context statistics."""
-        active = [m for m in self.messages if not m.is_pruned]
-        self.stats = ContextStats(
-            current_tokens=sum(m.tokens for m in active),
-            max_tokens=self.max_tokens,
-            messages_count=len(self.messages),
-            active_messages_count=len(active),
-            pruning_count=self._total_pruning_events,
-        )
+        return max(1, int(base_tokens + cjk_correction))
 
     def _prune_if_needed(self) -> None:
-        """Prune low-importance messages when approaching limits."""
+        """Prune messages if context window is over capacity."""
         if not self.needs_pruning():
             return
 
-        prune_targets: list[ContextMessage] = []
-        tokens_to_free = abs(self.tokens_remaining()) + (
-            self.usable_tokens // 10
-        )  # Free 10% buffer
-
-        # Collect candidates: non-protected, non-grounding, not tier 0
-        for msg in self.messages:
-            if not msg.should_preserve() and not msg.is_pruned:
-                prune_targets.append(msg)
-
-        # Sort by pruning score (lowest = prune first)
-        prune_targets.sort(key=lambda m: m.pruning_score())
-
-        # Prune messages until we have enough buffer
-        freed_tokens = 0
-        for msg in prune_targets:
-            if freed_tokens >= tokens_to_free:
+        pruned = 0
+        while self.needs_pruning() and self.messages:
+            # Find lowest priority message
+            candidates = [m for m in self.messages if not m.is_pruned and not m.should_preserve()]
+            if not candidates:
+                # All protected, cannot prune
                 break
-            msg.is_pruned = True
-            freed_tokens += msg.tokens
-            self._total_pruning_events += 1
 
-        # Update last prune timestamp
-        if freed_tokens > 0:
-            self.stats.last_prune_timestamp = datetime.now(timezone.utc)
+            # Sort by pruning score (ascending)
+            candidates.sort(key=lambda m: m.pruning_score())
+            victim = candidates[0]
 
+            victim.is_pruned = True
+            pruned += 1
+
+        self._total_pruning_events += 1
+        self.stats.pruning_count += pruned
+        self.stats.last_prune_timestamp = datetime.now(timezone.utc)
+        self._update_stats()
+        logger.debug(f"Pruned {pruned} messages, {len(self.messages)} total in window")
+
+    def _update_stats(self) -> None:
+        """Update context window statistics."""
+        active = [m for m in self.messages if not m.is_pruned]
+        self.stats.current_tokens = self.get_active_tokens()
+        self.stats.messages_count = len(self.messages)
+        self.stats.active_messages_count = len(active)
+
+    def clear(self) -> None:
+        """Clear all messages from context window."""
+        self.messages = []
         self._update_stats()
 
-    def validate_coherence(self) -> bool:
-        """Validate conversation coherence after pruning.
-
-        Ensures:
-        - At least one message from each turn remains
-        - No orphaned assistant responses
-        - Grounding messages preserved
-        """
-        active = self.get_messages()
-
-        # Empty context is valid (just not useful)
-        if not active:
-            return True
-
-        # Check for orphaned messages (assistant without preceding user)
-        # Skip first message
-        seen_user = any(m.role == "user" for m in active)
-        for i, msg in enumerate(active):
-            if msg.role == "assistant" and i == 0:
-                continue  # First message can be assistant
-            if msg.role == "assistant" and not seen_user:
-                return False
-            if msg.role == "user":
-                seen_user = True
-
-        # Ensure grounding messages are present if any were added
-        grounding_messages = [m for m in self.messages if m.is_grounding]
-        if grounding_messages and not any(
-            m.is_grounding and not m.is_pruned for m in self.messages
-        ):
-            return False
-
-        return True
-
-    def get_summary(self) -> dict:
-        """Get context window summary for debugging."""
-        return {
-            "max_tokens": self.max_tokens,
-            "usable_tokens": self.usable_tokens,
-            "current_tokens": self.stats.current_tokens,
-            "active_messages": self.stats.active_messages_count,
-            "pruned_messages": self.stats.messages_count - self.stats.active_messages_count,
-            "tokens_remaining": self.tokens_remaining(),
-            "pruning_events": self._total_pruning_events,
-            "needs_pruning": self.needs_pruning(),
-        }
-
-    def mark_below_threshold(self, threshold: int = 512) -> list[ContextMessage]:
-        """Mark messages with less than threshold tokens remaining.
-
-        Useful for UI indicators showing how much space is left.
-
-        Args:
-            threshold: Token threshold (default 512)
+    def get_summary(self) -> dict[str, int | float]:
+        """Get a summary of the current context window state.
 
         Returns:
-            List of messages that fit within threshold
+            Dictionary with context window statistics
         """
-        remaining = self.tokens_remaining()
-        if remaining >= threshold:
-            return []
-
-        # Return messages that can fit in remaining space
-        result = []
-        running_total = 0
-        for msg in reversed(self.get_messages()):
-            if running_total + msg.tokens <= remaining:
-                result.append(msg)
-                running_total += msg.tokens
-
-        return result
-
-    def reset(self) -> None:
-        """Clear all messages and stats."""
-        self.messages.clear()
-        self._total_pruning_events = 0
-        self._update_stats()
-        self._auto_save()
-
-    def save(self) -> None:
-        """Persist context history to disk.
-
-        Saves all messages (including pruned ones) to JSON file.
-        Creates parent directories if needed.
-        """
-        import json
-        Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "version": 1,
+        active = self.get_active_tokens()
+        return {
+            "current_tokens": self.stats.current_tokens,
             "max_tokens": self.max_tokens,
-            "model": self.model,
-            "total_pruning_events": self._total_pruning_events,
+            "usable_tokens": self.usable_tokens,
+            "tokens_remaining": self.tokens_remaining(),
+            "messages_count": self.stats.messages_count,
+            "active_messages_count": self.stats.active_messages_count,
+            "pruning_count": self.stats.pruning_count,
+            "utilization": (
+                f"{(self.stats.current_tokens / self.usable_tokens * 100):.1f}%"
+                if self.usable_tokens > 0
+                else "0%"
+            ),
+        }
+
+    def load(self) -> None:
+        """Load context history from storage_path if configured."""
+        if not self.storage_path:
+            return
+        path = Path(self.storage_path)
+        if not path.exists():
+            return
+        try:
+            import json
+            with open(path, "r") as f:
+                data = json.load(f)
+            messages = []
+            for item in data.get("messages", []):
+                item["timestamp"] = datetime.fromisoformat(item["timestamp"])
+                messages.append(ContextMessage(**item))
+            self.messages = messages
+            self._update_stats()
+            logger.info(f"Loaded {len(self.messages)} messages from {self.storage_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load context history: {e}")
+
+    def _auto_save(self) -> None:
+        """Auto-save context history if storage_path configured."""
+        if not self.storage_path:
+            return
+        import json
+        path = Path(self.storage_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
             "messages": [
                 {
                     "id": m.id,
@@ -344,47 +311,7 @@ class ContextWindowManager:
                     "priority_tier": m.priority_tier,
                 }
                 for m in self.messages
-            ],
+            ]
         }
-        Path(self.storage_path).write_text(json.dumps(data, indent=2))
-
-    def load(self) -> None:
-        """Load context history from disk.
-
-        Called automatically on init (if storage_path is set).
-        Can be called manually to reload.
-        Silently ignores missing or corrupt files.
-        """
-        if self.storage_path is None:
-            return
-        import json
-        path = Path(self.storage_path)
-        if not path.exists():
-            return
-        try:
-            data = json.loads(path.read_text())
-            self.messages = []
-            for m_data in data.get("messages", []):
-                ts = m_data["timestamp"]
-                if isinstance(ts, str):
-                    ts = datetime.fromisoformat(ts)
-                self.messages.append(ContextMessage(
-                    id=m_data["id"],
-                    role=m_data["role"],
-                    content=m_data["content"],
-                    timestamp=ts,
-                    importance=m_data.get("importance", 0.5),
-                    tokens=m_data.get("tokens", 0),
-                    is_grounding=m_data.get("is_grounding", False),
-                    is_pruned=m_data.get("is_pruned", False),
-                    priority_tier=m_data.get("priority_tier", 2),
-                ))
-            self._total_pruning_events = data.get("total_pruning_events", 0)
-            self._update_stats()
-        except (json.JSONDecodeError, KeyError, ValueError, OSError):
-            pass  # Start fresh on corruption
-
-    def _auto_save(self) -> None:
-        """Auto-save after mutations if storage path is configured."""
-        if self.storage_path:
-            self.save()
+        with open(path, "w") as f:
+            json.dump(data, f)
