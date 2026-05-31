@@ -5,6 +5,29 @@ All notable changes to **Rik Context Engine** will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-31
+
+### Added
+- **`feat(context)`: Semantic Summarization** — Condenses low-importance TIER_3 messages into dense semantic summaries using LLM, reducing context window size without losing meaning ([#86](https://github.com/vopsiton/riks-context-engine/issues/86))
+  - `SemanticSummarizer` class with configurable summary depth and preserve_entities option
+  - `summarize_tier3()` method in ContextWindowManager
+  - Streaming-friendly chunk-based summarization for large contexts
+- **`feat(context)`: Priority Inheritance** — Child messages automatically inherit parent importance score; conversation threads maintain topical coherence ([#94](https://github.com/vopsiton/riks-context-engine/issues/94))
+  - `Message.priority_inherited` field tracks inheritance chain
+  - `get_thread_coherence()` measures topical stability across message threads
+- **`docs`: Standard PR Template & Code Review Checklist** — Enforced PR description format with checklist for logic, style, security, and testing ([#92](https://github.com/vopsiton/riks-context-engine/issues/92))
+  - `.github/PR_BODY.md` template with automatic fill-in from conventional commits
+  - Reviewer checklist embedded in every PR description
+
+### Fixed
+- **`fix(context)`**: Semantic summarizer B905 strict mode — explicit `zip()` with `strict=True` for vector length validation
+- **pre-commit formatting**: trailing whitespace, eof newlines, and ruff format applied across all source files
+
+### Changed
+- **ROADMAP.md** updated with v0.3.0 → v1.0.0 milestones and feature backlog
+
+---
+
 ## [0.2.1] - 2026-05-31
 
 ### Added

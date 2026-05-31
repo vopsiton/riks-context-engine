@@ -105,4 +105,4 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and PR guidelines
 
 ---
 
-*Last updated: 2026-05-31 — v0.2.1 production release*
+*Last updated: 2026-05-31 — v0.3.0 production release*
