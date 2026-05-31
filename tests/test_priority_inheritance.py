@@ -43,7 +43,11 @@ def test_priority_only_inherits_upwards():
     assert child.importance == original_importance
 
 def test_tier0_not_inherited():
-    """TIER_0 (protected) messages do not propagate inheritance."""
+    """TIER_0 (protected) messages do not propagate inheritance.
+    
+    TIER_0_PROTECTED should not propagate to children. Child should keep
+    its original priority_tier even when parent is TIER_0.
+    """
     mgr = ContextWindowManager(max_tokens=10_000)
     
     system = mgr.add("system", "System instructions", importance=1.0, priority_tier=TIER_0_PROTECTED)
@@ -55,7 +59,8 @@ def test_tier0_not_inherited():
     
     mgr.propagate_priority("child-sys")
     
-    assert child.priority_tier != TIER_0_PROTECTED
+    # TIER_0 should NOT propagate to child - child keeps original tier
+    assert child.priority_tier == TIER_3_LOW, f"Expected TIER_3_LOW({TIER_3_LOW}), got TIER_0({TIER_0_PROTECTED})"
 
 def test_pruning_score_uses_inherited():
     """pruning_score should reflect inherited importance."""
