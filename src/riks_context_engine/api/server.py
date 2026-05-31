@@ -50,7 +50,6 @@ def _lms_chat(model_ui_name: str, message: str) -> str:
         "model": lms_model,
         "messages": [{"role": "user", "content": message}],
         "stream": False,
-        "max_tokens": 2048,
     }
 
     try:

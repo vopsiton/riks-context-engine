@@ -94,6 +94,7 @@ class ContextWindowManager:
         self.max_tokens = max_tokens
         self.usable_tokens = max_tokens - (2 * TOKEN_BUFFER_PER_SIDE)
         self.model = model
+        self._async_lock = asyncio.Lock()
         self.messages: list[ContextMessage] = []
         self._total_pruning_events = 0
         self.stats = ContextStats(
@@ -159,7 +160,7 @@ class ContextWindowManager:
         Returns:
             Created ContextMessage
         """
-        async with asyncio.Lock():
+        async with self._async_lock:
             return self.add(role, content, importance, is_grounding, priority_tier)
 
     def get_messages(self, include_pruned: bool = False) -> list[ContextMessage]:
@@ -244,9 +245,9 @@ class ContextWindowManager:
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count for text.
 
-        Uses tiktoken for accurate model-specific encoding when available.
-        Falls back to character-based estimation for unsupported models
-        or when tiktoken is not installed.
+        Uses tiktoken for accurate model-specific encoding when available
+        for Latin-based text. Falls back to character-based estimation for
+        non-Latin scripts (CJK, Arabic, etc.) where tiktoken gives wrong results.
 
         Args:
             text: Text to estimate tokens for
@@ -254,7 +255,14 @@ class ContextWindowManager:
         Returns:
             Estimated token count
         """
-        # Try tiktoken first for more accurate estimation
+        # IMPORTANT: Check non-Latin BEFORE calling tiktoken.
+        # tiktoken SUCCEEDS for CJK/non-Latin but gives wrong counts
+        # (1 char = 1 token per tiktoken, spec says 2 chars/token).
+        if self._contains_non_latin(text):
+            # Non-Latin scripts: ~2 chars per token
+            return max(1, len(text) // 2)
+
+        # For Latin-based text, try tiktoken for accurate estimation
         encoding_result = self._get_tiktoken_encoding()
         if encoding_result is not None:
             encoding, enc_name = encoding_result
@@ -275,11 +283,6 @@ class ContextWindowManager:
         if any(indicator in text for indicator in code_indicators):
             # Code tends to use more tokens per char
             base_tokens = int(base_tokens * 1.3)
-
-        # Special handling for non-Latin scripts (more tokens per char)
-        # e.g., CJK characters are typically 1 token per 2 chars
-        if self._contains_non_latin(text):
-            base_tokens = int(len(text) / 2)
 
         return base_tokens
 

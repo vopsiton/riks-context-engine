@@ -11,25 +11,23 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - DATA_DIR=/app/data
+      - LMS_URL=http://127.0.0.1:1234/v1
       - OLLAMA_HOST=${OLLAMA_HOST}
       - CHROMA_HOST=${CHROMA_HOST:-chroma}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - prod-data:/app/data
     ports:
       - "8000:8000"
     restart: unless-stopped
-    networks:
-      - riks-net
+    network_mode: host
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.path.insert(0,'src'); from riks_context_engine import *; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-networks:
-  riks-net:
-    driver: bridge
 
 volumes:
   prod-data:
