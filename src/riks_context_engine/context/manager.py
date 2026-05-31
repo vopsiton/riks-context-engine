@@ -205,6 +205,7 @@ class ContextWindowManager:
         cjk_chars = len(re.findall(r"[\u4e00-\u9fff\u3040-\u30ff]", text))
         cjk_correction = cjk_chars - cjk_chars / CHAR_PER_TOKEN
 
+        return int(base_tokens + cjk_correction)
 
     def _prune_if_needed(self) -> None:
         """Prune messages if context window is over capacity."""
