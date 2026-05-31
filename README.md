@@ -228,7 +228,7 @@ pre-commit run --all-files
 
 | Metric | Status |
 |--------|--------|
-| **Version** | v1.0.0 |
+| **Version** | v0.3.0 |
 | **All Issues** | ✅ CLOSED (11/11) |
 | **All PRs** | ✅ MERGED (5/5) |
 | **UAT** | ✅ 484 PASS, 71 SKIP, 0 FAIL |
