@@ -29,12 +29,11 @@ Usage
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from riks_context_engine.context.manager import ContextMessage, ContextWindowManager
@@ -171,7 +170,8 @@ class SemanticSummarizer:
         """
         # Identify TIER_3 candidates (not already summarized, not pruned)
         tier3_candidates = [
-            m for m in manager.messages
+            m
+            for m in manager.messages
             if m.priority_tier >= SUMMARIZE_TIER_THRESHOLD
             and not m.is_pruned
             and not hasattr(m, "summary")
@@ -450,10 +450,32 @@ def _keyword_fallback_summarize(
 
     # Keywords that indicate important content
     key_indicators = [
-        "need", "want", "prefer", "use", "create", "delete", "update",
-        "fix", "bug", "error", "fail", "success", "result",
-        "remember", "don't", "never", "always", "config", "setting",
-        "name", "date", "time", "value", "id", "email", "address",
+        "need",
+        "want",
+        "prefer",
+        "use",
+        "create",
+        "delete",
+        "update",
+        "fix",
+        "bug",
+        "error",
+        "fail",
+        "success",
+        "result",
+        "remember",
+        "don't",
+        "never",
+        "always",
+        "config",
+        "setting",
+        "name",
+        "date",
+        "time",
+        "value",
+        "id",
+        "email",
+        "address",
     ]
 
     for sent in sentences:

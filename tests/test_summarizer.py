@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -14,11 +14,10 @@ from riks_context_engine.context.summarizer import (
     TARGET_COMPRESSION_RATIO,
     BlockSummary,
     SemanticSummarizer,
-    SummarizedBlock,
     SummarizationResult,
+    SummarizedBlock,
     _keyword_fallback_summarize,
 )
-
 
 # ─── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -151,10 +150,7 @@ class TestGroupTier3Blocks:
 
     def test_multiple_messages_single_block(self) -> None:
         s = SemanticSummarizer()
-        msgs = [
-            make_msg(f"msg_{i}", "user", f"content {i}", priority_tier=3)
-            for i in range(4)
-        ]
+        msgs = [make_msg(f"msg_{i}", "user", f"content {i}", priority_tier=3) for i in range(4)]
         blocks = s._group_tier3_blocks(msgs)
         assert len(blocks) == 1
         assert blocks[0] == ["msg_0", "msg_1", "msg_2", "msg_3"]
@@ -203,29 +199,35 @@ class TestSummarizeTier3Unit:
 
     def test_no_tier3_messages(self) -> None:
         s = SemanticSummarizer()
-        mgr = make_manager([
-            make_msg("msg_0", "user", "important", priority_tier=1, importance=0.9),
-            make_msg("msg_1", "assistant", "response", priority_tier=1, importance=0.8),
-        ])
+        mgr = make_manager(
+            [
+                make_msg("msg_0", "user", "important", priority_tier=1, importance=0.9),
+                make_msg("msg_1", "assistant", "response", priority_tier=1, importance=0.8),
+            ]
+        )
         result = s.summarize_tier3(mgr)
         assert result.blocks_summarized == 0
         assert result.summaries == []
 
     def test_below_minimum_messages(self) -> None:
         s = SemanticSummarizer(min_messages=4)
-        mgr = make_manager([
-            make_msg("msg_0", "user", "hello", priority_tier=3),
-            make_msg("msg_1", "assistant", "hi", priority_tier=3),
-        ])
+        mgr = make_manager(
+            [
+                make_msg("msg_0", "user", "hello", priority_tier=3),
+                make_msg("msg_1", "assistant", "hi", priority_tier=3),
+            ]
+        )
         result = s.summarize_tier3(mgr)
         assert result.blocks_summarized == 0
 
     def test_force_overrides_minimum(self) -> None:
         s = SemanticSummarizer(min_messages=4)
-        mgr = make_manager([
-            make_msg("msg_0", "user", "hello", priority_tier=3),
-            make_msg("msg_1", "assistant", "hi", priority_tier=3),
-        ])
+        mgr = make_manager(
+            [
+                make_msg("msg_0", "user", "hello", priority_tier=3),
+                make_msg("msg_1", "assistant", "hi", priority_tier=3),
+            ]
+        )
         with patch("riks_context_engine.context.summarizer._summarize_with_llm") as mock_llm:
             mock_llm.return_value = "Test summary"
             result = s.summarize_tier3(mgr, force=True)
@@ -255,10 +257,12 @@ class TestSummarizeTier3Unit:
 
     def test_no_signal_marks_pruned(self) -> None:
         s = SemanticSummarizer()
-        mgr = make_manager([
-            make_msg("msg_0", "user", "hello", priority_tier=3),
-            make_msg("msg_1", "assistant", "hi", priority_tier=3),
-        ])
+        mgr = make_manager(
+            [
+                make_msg("msg_0", "user", "hello", priority_tier=3),
+                make_msg("msg_1", "assistant", "hi", priority_tier=3),
+            ]
+        )
         with patch("riks_context_engine.context.summarizer._summarize_with_llm") as mock_llm:
             mock_llm.return_value = None  # LLM unavailable → fallback
             with patch(
@@ -298,7 +302,7 @@ class TestSummarizeTier3Unit:
 
         with patch("riks_context_engine.context.summarizer._summarize_with_llm") as mock_llm:
             mock_llm.return_value = "Summary of three"
-            result = s.summarize_tier3(mgr, force=True)
+            _ = s.summarize_tier3(mgr, force=True)
 
         assert msgs[0].is_pruned is False  # kept (holds summary)
         assert msgs[1].is_pruned is True
@@ -361,9 +365,11 @@ class TestSetSummarizer:
 
     def test_run_summarization_delegates_to_summarizer(self) -> None:
         s = SemanticSummarizer()
-        mgr = make_manager([
-            make_msg("msg_0", "user", "hello", priority_tier=3),
-        ])
+        mgr = make_manager(
+            [
+                make_msg("msg_0", "user", "hello", priority_tier=3),
+            ]
+        )
         mgr.set_summarizer(s)
 
         mock_result = SummarizationResult(
@@ -381,12 +387,16 @@ class TestSetSummarizer:
 
     def test_run_summarization_force_arg(self) -> None:
         s = SemanticSummarizer()
-        mgr = make_manager([
-            make_msg("msg_0", "user", "hello", priority_tier=3),
-        ])
+        mgr = make_manager(
+            [
+                make_msg("msg_0", "user", "hello", priority_tier=3),
+            ]
+        )
         mgr.set_summarizer(s)
 
-        with patch.object(s, "summarize_tier3", return_value=SummarizationResult(0, 0, 0, 0.0, [])) as mock_sum:
+        with patch.object(
+            s, "summarize_tier3", return_value=SummarizationResult(0, 0, 0, 0.0, [])
+        ) as mock_sum:
             mgr.run_summarization(force=False)
             mock_sum.assert_called_once_with(mgr, force=False)
 
@@ -400,8 +410,12 @@ class TestSemanticSummarizationIntegration:
     def test_end_to_end_compression(self) -> None:
         s = SemanticSummarizer()
         msgs = [
-            make_msg("msg_0", "user", "I need to set up a new server", priority_tier=1, importance=0.9),
-            make_msg("msg_1", "assistant", "I'll help you configure it", priority_tier=1, importance=0.8),
+            make_msg(
+                "msg_0", "user", "I need to set up a new server", priority_tier=1, importance=0.9
+            ),
+            make_msg(
+                "msg_1", "assistant", "I'll help you configure it", priority_tier=1, importance=0.8
+            ),
             make_msg("msg_2", "user", "Can you check the logs?", priority_tier=3, importance=0.2),
             make_msg("msg_3", "assistant", "Sure, looking now", priority_tier=3, importance=0.2),
             make_msg("msg_4", "user", "Thanks", priority_tier=3, importance=0.1),
@@ -410,7 +424,9 @@ class TestSemanticSummarizationIntegration:
         mgr = make_manager(msgs)
 
         with patch("riks_context_engine.context.summarizer._summarize_with_llm") as mock_llm:
-            mock_llm.return_value = "User asked about logs, assistant checked, both exchanged thanks"
+            mock_llm.return_value = (
+                "User asked about logs, assistant checked, both exchanged thanks"
+            )
             result = s.summarize_tier3(mgr, force=True)
 
         # 4 TIER_3 messages should be summarized into 1 block
