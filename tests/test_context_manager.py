@@ -322,13 +322,13 @@ class TestValidateCoherence:
 
     def test_empty_context_valid(self) -> None:
         mgr = ContextWindowManager()
-        assert mgr.validate_coherence() is True
+        assert mgr.validate_coherence()["is_coherent"] is True
 
     def test_first_message_assistant_valid(self) -> None:
         """First message being assistant is valid."""
         mgr = ContextWindowManager()
         mgr.add("assistant", "Hello, how can I help?", priority_tier=0)
-        assert mgr.validate_coherence() is True
+        assert mgr.validate_coherence()["is_coherent"] is True
 
     def test_grounding_preserved_when_added(self) -> None:
         """If grounding messages were added, at least one must remain."""
