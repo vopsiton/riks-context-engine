@@ -1,6 +1,7 @@
 """Knowledge graph - entities and their relationships with semantic search."""
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -8,6 +9,8 @@ from enum import Enum
 from math import sqrt
 from pathlib import Path
 from typing import Any, Protocol
+
+logger = logging.getLogger(__name__)
 
 from riks_context_engine.memory.embedding import OllamaEmbedder, get_embedder  # noqa: F401
 
@@ -19,10 +22,18 @@ class EmbedderProtocol(Protocol):
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = sqrt(sum(x * x for x in a))
-    norm_b = sqrt(sum(x * x for x in b))
+    """Compute cosine similarity between two vectors.
+
+    Handles vectors of different lengths by using the minimum length.
+    Returns 0.0 if either vector is empty.
+    """
+    if not a or not b:
+        return 0.0
+    # Use minimum length to handle mismatched embedding dimensions gracefully
+    min_len = min(len(a), len(b))
+    dot = sum(x * y for x, y in zip(a[:min_len], b[:min_len], strict=True))
+    norm_a = sqrt(sum(x * x for x in a[:min_len]))
+    norm_b = sqrt(sum(x * x for x in b[:min_len]))
     if norm_a == 0 or norm_b == 0:
         return 0.0
     return dot / (norm_a * norm_b)
@@ -377,8 +388,12 @@ class KnowledgeGraph:
                 query_vec = query_emb.embedding
             else:
                 query_vec = query_emb  # fallback for raw list responses
-        except Exception:
-            # If embedding service unavailable, fall back to keyword match
+        except Exception as exc:
+            logger.warning(
+                "Embedder failed during semantic_search, falling back to keyword search: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
             return self._keyword_search(query, top_k)
 
         scored: list[tuple[Entity, float]] = []
