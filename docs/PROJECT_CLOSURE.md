@@ -1,7 +1,7 @@
 # Project Closure Report — Rik Context Engine
 
-**Project:** vopsiton/riks-context-engine  
-**Closure Date:** 2026-05-31  
+**Project:** vopsiton/riks-context-engine
+**Closure Date:** 2026-05-31
 **Status:** ✅ COMPLETED
 
 ---

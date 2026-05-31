@@ -1,8 +1,8 @@
 # MCP Server Integration — Feature Specification
 
-**Issue:** #34  
-**Status:** SPEC — Implementation Pending  
-**Priority:** P1  
+**Issue:** #34
+**Status:** SPEC — Implementation Pending
+**Priority:** P1
 **Created:** 2026-04-19
 
 ---

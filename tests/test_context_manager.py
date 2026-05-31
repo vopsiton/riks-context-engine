@@ -22,27 +22,40 @@ class TestContextMessage:
     def test_should_preserve_grounding(self) -> None:
         """is_grounding=True → should_preserve returns True."""
         from datetime import datetime, timezone
+
         msg = ContextMessage(
-            id="1", role="user", content="I prefer dark mode",
-            timestamp=datetime.now(timezone.utc), is_grounding=True,
+            id="1",
+            role="user",
+            content="I prefer dark mode",
+            timestamp=datetime.now(timezone.utc),
+            is_grounding=True,
         )
         assert msg.should_preserve() is True
 
     def test_should_preserve_tier_0(self) -> None:
         """priority_tier=0 → should_preserve returns True."""
         from datetime import datetime, timezone
+
         msg = ContextMessage(
-            id="1", role="system", content="You are a helpful assistant",
-            timestamp=datetime.now(timezone.utc), priority_tier=0,
+            id="1",
+            role="system",
+            content="You are a helpful assistant",
+            timestamp=datetime.now(timezone.utc),
+            priority_tier=0,
         )
         assert msg.should_preserve() is True
 
     def test_should_preserve_false_for_normal(self) -> None:
         """Normal message → should_preserve is False."""
         from datetime import datetime, timezone
+
         msg = ContextMessage(
-            id="1", role="user", content="Hello",
-            timestamp=datetime.now(timezone.utc), priority_tier=2, is_grounding=False,
+            id="1",
+            role="user",
+            content="Hello",
+            timestamp=datetime.now(timezone.utc),
+            priority_tier=2,
+            is_grounding=False,
         )
         assert msg.should_preserve() is False
 
@@ -53,13 +66,22 @@ class TestContextMessage:
         messages score LOWER (more negative) and are considered for pruning first.
         """
         from datetime import datetime, timezone
+
         low_imp = ContextMessage(
-            id="1", role="user", content="x",
-            timestamp=datetime.now(timezone.utc), importance=0.1, tokens=0,
+            id="1",
+            role="user",
+            content="x",
+            timestamp=datetime.now(timezone.utc),
+            importance=0.1,
+            tokens=0,
         )
         high_imp = ContextMessage(
-            id="2", role="user", content="x",
-            timestamp=datetime.now(timezone.utc), importance=1.0, tokens=0,
+            id="2",
+            role="user",
+            content="x",
+            timestamp=datetime.now(timezone.utc),
+            importance=1.0,
+            tokens=0,
         )
         assert high_imp.pruning_score() < low_imp.pruning_score()
 
@@ -144,9 +166,9 @@ class TestAddAsync:
     async def test_add_async_thread_safe(self) -> None:
         """Multiple concurrent adds don't corrupt state."""
         mgr = ContextWindowManager(max_tokens=50_000)
-        await asyncio.gather(*[
-            mgr.add_async("user", f"msg{i} short content", importance=0.5) for i in range(5)
-        ])
+        await asyncio.gather(
+            *[mgr.add_async("user", f"msg{i} short content", importance=0.5) for i in range(5)]
+        )
         assert mgr.stats.messages_count == 5
         assert mgr.stats.active_messages_count == 5
 

@@ -161,7 +161,9 @@ class KnowledgeGraph:
 
         conn.close()
 
-    def add_entity(self, name: str, entity_type: EntityType, properties: dict | None = None) -> Entity:
+    def add_entity(
+        self, name: str, entity_type: EntityType, properties: dict | None = None
+    ) -> Entity:
         """Add an entity to the graph."""
         entity = Entity(
             id=f"{entity_type.value}_{name.lower().replace(' ', '_')}",
@@ -235,7 +237,9 @@ class KnowledgeGraph:
         conn.commit()
         conn.close()
 
-    def query(self, entity_name: str | None = None, relationship_type: RelationshipType | None = None) -> list[Entity | Relationship]:
+    def query(
+        self, entity_name: str | None = None, relationship_type: RelationshipType | None = None
+    ) -> list[Entity | Relationship]:
         """Query the knowledge graph by entity name or relationship type.
 
         Args:
@@ -277,7 +281,6 @@ class KnowledgeGraph:
         if entity_id not in self._entities:
             return []
 
-
         results: list[tuple[Entity, Relationship]] = []
         visited: set[str] = {entity_id}
         queue: list[tuple[str, int]] = [(entity_id, 0)]
@@ -315,7 +318,9 @@ class KnowledgeGraph:
             if rel.from_entity_id == entity_id or rel.to_entity_id == entity_id
         ]
 
-    def find_path(self, from_entity_id: str, to_entity_id: str, max_depth: int = 3) -> list[Relationship] | None:
+    def find_path(
+        self, from_entity_id: str, to_entity_id: str, max_depth: int = 3
+    ) -> list[Relationship] | None:
         """Find a path between two entities using BFS.
 
 
@@ -378,7 +383,6 @@ class KnowledgeGraph:
         """
         if not self._entities:
             return []
-
 
         emb_service = embedder or get_embedder()
 

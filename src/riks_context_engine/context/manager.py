@@ -84,7 +84,9 @@ class ContextWindowManager:
         >>> msg.tokens_remaining  # Show tokens left in window
     """
 
-    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max", storage_path: str | None = None):
+    def __init__(
+        self, max_tokens: int = 180_000, model: str = "mini-max", storage_path: str | None = None
+    ):
         """Initialize context window manager.
 
         Args:
@@ -306,6 +308,7 @@ class ContextWindowManager:
             return
         try:
             import json
+
             with open(path) as f:
                 data = json.load(f)
             messages = []
@@ -323,6 +326,7 @@ class ContextWindowManager:
         if not self.storage_path:
             return
         import json
+
         path = Path(self.storage_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
@@ -372,13 +376,17 @@ class ContextWindowManager:
                 issues.append("System messages found after non-system messages")
 
         # Check 2: Tool result without tool call pattern
-        tool_results = [m for m in active_msgs if m.role == "tool" or "tool" in m.content.lower()[:50]]
+        tool_results = [
+            m for m in active_msgs if m.role == "tool" or "tool" in m.content.lower()[:50]
+        ]
         if tool_results:
             for tr in tool_results:
                 tr_idx = active_msgs.index(tr)
                 prior_msgs = active_msgs[:tr_idx]
                 if not any(m.role in ("assistant", "user") for m in prior_msgs[-3:]):
-                    issues.append(f"Tool result '{tr.content[:50]}...' appears without prior context")
+                    issues.append(
+                        f"Tool result '{tr.content[:50]}...' appears without prior context"
+                    )
 
         # Check 3: Ensure conversation has at least one user message
         if not any(m.role == "user" for m in active_msgs) and len(active_msgs) > 1:
@@ -402,4 +410,3 @@ class ContextWindowManager:
             return 1.0
         score = 1.0 - (len(cast(list[str], validation["issues"])) * 0.1)
         return max(0.0, score)
-

@@ -70,6 +70,7 @@ class TestExportMemory:
         ep.add("old entry")
 
         from datetime import datetime, timezone
+
         manifest = export_memory(ep, None, None, date_from=datetime.now(timezone.utc))
         assert len(manifest.episodic) == 0
 
@@ -116,7 +117,12 @@ class TestDumpAndParse:
 
     def test_schema_version_check_rejects_mismatched(self):
         bad_data = {
-            "metadata": {"schema_version": "99.0", "exported_at": "2026-01-01T00:00:00Z", "tool": "test", "export_id": "abc"},
+            "metadata": {
+                "schema_version": "99.0",
+                "exported_at": "2026-01-01T00:00:00Z",
+                "tool": "test",
+                "export_id": "abc",
+            },
             "episodic": [],
             "semantic": [],
             "procedural": [],

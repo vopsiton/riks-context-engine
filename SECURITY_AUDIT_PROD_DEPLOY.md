@@ -1,8 +1,8 @@
 # Security Audit - feat/production-deployment-fixes
 
-**Date:** 2026-05-30  
-**Branch:** `feat/production-deployment-fixes`  
-**Reviewer:** Security Tester Subagent  
+**Date:** 2026-05-30
+**Branch:** `feat/production-deployment-fixes`
+**Reviewer:** Security Tester Subagent
 **Changes:** Dockerfile (uvicorn + UI), docker-compose.prod.yml (host networking + LMS_URL), server.py (max_tokens removed)
 
 ---
@@ -97,7 +97,7 @@ ports:
 
 **Risk:** Combined with `network_mode: host`, this maps host port 8000 directly to the container. Since there's no authentication (BLOCKER-2), **anyone on the network can access the full API.**
 
-**Recommendation:** 
+**Recommendation:**
 - Bind to `127.0.0.1:8000` only (not `0.0.0.0`) if accessible only locally
 - Put behind nginx with auth
 - Use firewall to restrict access
@@ -115,13 +115,13 @@ ports:
 
 **Risk:** API server runs plain HTTP. All data (including memory exports) travels unencrypted over the network. CORS is configured with `allow_credentials: True` — without HTTPS, this is a security risk in production (cookies/tokens vulnerable to interception).
 
-**Recommendation:** 
+**Recommendation:**
 - Add TLS termination in nginx or use a cloud load balancer
 - Alternatively, use `uvicorn` with SSL certs:
   ```yaml
-  CMD ["python", "-m", "uvicorn", "riks_context_engine.api.server:app", 
-       "--host", "0.0.0.0", "--port", "8000", 
-       "--ssl-keyfile", "/app/certs/key.pem", 
+  CMD ["python", "-m", "uvicorn", "riks_context_engine.api.server:app",
+       "--host", "0.0.0.0", "--port", "8000",
+       "--ssl-keyfile", "/app/certs/key.pem",
        "--ssl-certfile", "/app/certs/cert.pem"]
   ```
 
