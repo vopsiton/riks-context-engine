@@ -7,6 +7,7 @@ AC-48-03 (existing tests pass).
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 
 from riks_context_engine.graph.knowledge_graph import EntityType, KnowledgeGraph
 from riks_context_engine.memory.semantic import SemanticMemory
@@ -35,7 +36,7 @@ class TestSQLInjectionFix:
             ],
             capture_output=True,
             text=True,
-            cwd="/home/vahit/.openclaw/workspace/riks-context-engine",
+            cwd=str(Path(__file__).parent.parent),
         )
         assert result.returncode != 0, (
             f"f-string in execute() found — SQL injection risk!\n{result.stdout}"
