@@ -321,6 +321,7 @@ Example: [{{"name": "Setup environment", "description": "Install dependencies", 
 
             for task in ready:
                 execution_plan.append([task])
+                task.status = TaskStatus.RUNNING  # prevent re-selection in next iteration
                 completed.add(task.id)
 
         return execution_plan
