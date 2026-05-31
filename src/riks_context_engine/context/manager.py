@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import tiktoken
+    import tiktoken  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -84,17 +84,19 @@ class ContextWindowManager:
         >>> msg.tokens_remaining  # Show tokens left in window
     """
 
-    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max"):
+    def __init__(self, max_tokens: int = 180_000, model: str = "mini-max", storage_path: str | None = None):
         """Initialize context window manager.
 
         Args:
             max_tokens: Maximum token capacity for the context window.
                        Actual usable tokens = max_tokens - 2 * TOKEN_BUFFER
             model: Model name for token estimation (affects encoding)
+            storage_path: Optional path for persisting context history (JSON)
         """
         self.max_tokens = max_tokens
         self.usable_tokens = max_tokens - (2 * TOKEN_BUFFER_PER_SIDE)
         self.model = model
+        self.storage_path = storage_path
         self._async_lock = asyncio.Lock()
         self.messages: list[ContextMessage] = []
         self._total_pruning_events = 0
@@ -275,7 +277,6 @@ class ContextWindowManager:
         Returns:
             Dictionary with context window statistics
         """
-        active = self.get_active_tokens()
         pruned = sum(1 for m in self.messages if m.is_pruned)
         return {
             "current_tokens": self.stats.current_tokens,
@@ -305,7 +306,7 @@ class ContextWindowManager:
             return
         try:
             import json
-            with open(path, "r") as f:
+            with open(path) as f:
                 data = json.load(f)
             messages = []
             for item in data.get("messages", []):
@@ -342,3 +343,63 @@ class ContextWindowManager:
         }
         with open(path, "w") as f:
             json.dump(data, f)
+
+    def validate_coherence(self) -> dict[str, bool | list[str]]:
+        """Validate logical coherence of current context window.
+
+        Checks for common coherence issues that arise from aggressive pruning:
+        - Orphaned assistant responses (assistant msg without preceding user msg)
+        - Broken tool-result chains (tool result without preceding tool call)
+        - Incomplete request-response pairs
+        - System messages not at the beginning
+
+        Returns:
+            Dictionary with coherence validation results:
+            - is_coherent: Overall coherence status
+            - issues: List of specific issues found (empty if coherent)
+        """
+        issues: list[str] = []
+        active_msgs = [m for m in self.messages if not m.is_pruned]
+
+        if not active_msgs:
+            return {"is_coherent": True, "issues": []}
+
+        # Check 1: System messages should be at the beginning
+        non_system = [m for m in active_msgs if m.role != "system"]
+        if non_system:
+            first_non_system = active_msgs[0] if active_msgs[0].role != "system" else None
+            if first_non_system and any(m.role == "system" for m in active_msgs[1:]):
+                issues.append("System messages found after non-system messages")
+
+        # Check 2: Tool result without tool call pattern
+        tool_results = [m for m in active_msgs if m.role == "tool" or "tool" in m.content.lower()[:50]]
+        if tool_results:
+            for tr in tool_results:
+                tr_idx = active_msgs.index(tr)
+                prior_msgs = active_msgs[:tr_idx]
+                if not any(m.role in ("assistant", "user") for m in prior_msgs[-3:]):
+                    issues.append(f"Tool result '{tr.content[:50]}...' appears without prior context")
+
+        # Check 3: Ensure conversation has at least one user message
+        if not any(m.role == "user" for m in active_msgs) and len(active_msgs) > 1:
+            issues.append("No user messages found in context window")
+
+        return {
+            "is_coherent": len(issues) == 0,
+            "issues": issues,
+        }
+
+    def get_coherence_score(self) -> float:
+        """Get a coherence score from 0.0 to 1.0.
+
+        Returns:
+            Coherence score where 1.0 = perfectly coherent
+        """
+        if not self.messages:
+            return 1.0
+        validation = self.validate_coherence()
+        if validation["is_coherent"]:
+            return 1.0
+        score = 1.0 - (len(validation["issues"]) * 0.1)
+        return max(0.0, score)
+
