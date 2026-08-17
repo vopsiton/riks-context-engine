@@ -170,7 +170,9 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
-            const files = await github.rest.pullRequest.listFiles({
+            // github-script v7 exposes REST via github.rest; the legacy
+            // github.pullRequest namespace is undefined and throws.
+            const files = await github.rest.pulls.listFiles({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: pr.number

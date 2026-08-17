@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+
 import pytest
-from fastapi.testclient import TestClient
 
 from riks_context_engine.api import server as server_module
 from riks_context_engine.api.server import (
     WebSocketContextStreamer,
-    WSContextUpdate,
     WSClientMessage,
+    WSContextUpdate,
     app,
 )
 

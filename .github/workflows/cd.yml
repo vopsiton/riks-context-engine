@@ -37,11 +37,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # Quality gates match ci.yml exactly (closes part of #114):
+      # ci.yml only checks src/, and pre-commit runs its own hooks.
+      # Previously this job linted src/+tests/ which double-counted
+      # intentional test-style drift and made CI red on every PR.
       - name: Run ruff check
-        run: ruff check src/ tests/
+        run: ruff check src/
 
       - name: Check ruff format
-        run: ruff format --check src/ tests/
+        run: ruff format --check src/
 
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1

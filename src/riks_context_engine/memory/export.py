@@ -177,7 +177,15 @@ def parse_manifest(content: str, format: str) -> ExportManifest:
         data = yaml.safe_load(content)
     if not isinstance(data, dict):
         raise ValueError(f"Expected object at top level, got {type(data).__name__}")
-    ver = data.get("metadata", {}).get("schema_version", "0.0")
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError(f"Expected 'metadata' to be an object, got {type(metadata).__name__}")
+    ver = metadata.get("schema_version")
+    if ver is None or not isinstance(ver, str):
+        raise ValueError(
+            f"Schema version mismatch: got {ver!r}, expected major {SCHEMA_VERSION.split('.')[0]}. "
+            f"'metadata.schema_version' is required and must be a string."
+        )
     _check_schema_compat(ver)
     return ExportManifest.from_dict(data)
 
