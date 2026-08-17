@@ -133,13 +133,27 @@ jobs:
           provenance: false
           sbom: false
 
+      # Scan the locally built image by DIGEST (scan-ref: .) so we never
+      # try to pull an image that was built with push: false. The old
+      # `image-ref: ${{ steps.meta.outputs.tags }}` passed the comma-joined
+      # multi-tag string from metadata-action, which trivy-action could not
+      # parse as a single image reference (fatal since 2026-08-17).
+      - name: Extract image digest
+        id: digest
+        run: |
+          DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' \
+            "ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}" | cut -d'@' -f2)"
+          echo "digest=sha256:${DIGEST#sha256:}" >> "$GITHUB_OUTPUT"
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ steps.meta.outputs.tags }}
+          scan-ref: .
+          image-ref: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}@sha256:${{ steps.digest.outputs.digest }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
+          ignorefile: .trivyignore
 
       - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v3
