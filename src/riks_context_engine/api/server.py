@@ -9,10 +9,11 @@ import os
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Annotated, Any, AsyncGenerator, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from riks_context_engine.context.manager import ContextWindowManager
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
     dump_manifest,
@@ -47,7 +49,9 @@ API_KEY = os.environ.get("API_KEY", "")
 
 # ─── API Key Middleware ────────────────────────────────────────────────────────
 
-_API_KEY_PROTECTED_PATHS = frozenset(["/", "/api/chat", "/api/v1/memory/export", "/api/v1/memory/import", "/models"])
+_API_KEY_PROTECTED_PATHS = frozenset(
+    ["/", "/api/chat", "/api/v1/memory/export", "/api/v1/memory/import", "/models"]
+)
 
 
 class APIKeyAuthMiddleware(BaseHTTPMiddleware):
@@ -69,9 +73,8 @@ _ip_request_log: dict[str, list[tuple[float, int]]] = defaultdict(list)
 _ip_lock = Lock()
 
 
-
 def _get_client_ip(request: Request) -> str:
-    """"Extract client IP, checking X-Forwarded-For first."""
+    """Extract client IP, checking X-Forwarded-For first."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -89,9 +92,7 @@ def _check_rate_limit(ip: str) -> tuple[bool, int, int]:
 
     with _ip_lock:
         # Prune old entries
-        _ip_request_log[ip] = [
-            (ts, cnt) for ts, cnt in _ip_request_log[ip] if ts > window_start
-        ]
+        _ip_request_log[ip] = [(ts, cnt) for ts, cnt in _ip_request_log[ip] if ts > window_start]
         entries = _ip_request_log[ip]
 
         total = sum(cnt for _, cnt in entries)
@@ -110,7 +111,6 @@ def _record_request(ip: str) -> None:
     now = time.time()
     with _ip_lock:
         _ip_request_log[ip].append((now, 1))
-
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -136,7 +136,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-
         _record_request(ip)
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(_RATE_LIMIT_REQUESTS)
@@ -151,16 +150,16 @@ _semantic_memory: SemanticMemory | None = None
 _procedural_memory: ProceduralMemory | None = None
 
 # Module-level context window manager for WebSocket streaming
-_context_manager: "ContextWindowManager | None" = None  # noqa: F821
+_context_manager: ContextWindowManager | None = None
 
 
-def _set_context_manager(mgr: "ContextWindowManager | None") -> None:  # noqa: F821
+def _set_context_manager(mgr: ContextWindowManager | None) -> None:
     """Set the module-level context manager (called by lifespan)."""
     global _context_manager
     _context_manager = mgr
 
 
-def _get_context_manager() -> "ContextWindowManager | None":  # noqa: F821
+def _get_context_manager() -> ContextWindowManager | None:  # noqa: F821
     """Get the module-level context manager."""
     return _context_manager
 
@@ -175,6 +174,7 @@ _WS_SUBSCRIBE_TIMEOUT = 5.0  # seconds to wait for subscription ack
 
 class WSClientMessage(BaseModel):
     """Incoming message types from WebSocket client."""
+
     type: Literal["subscribe", "unsubscribe", "ping"]
     session_id: str | None = None
     include_stats: bool = True
@@ -182,6 +182,7 @@ class WSClientMessage(BaseModel):
 
 class WSContextUpdate(BaseModel):
     """Context update pushed to WebSocket clients."""
+
     type: Literal[
         "context_update",
         "stats_update",
@@ -196,7 +197,9 @@ class WSContextUpdate(BaseModel):
     stats: dict[str, Any] | None = None
     pruned_count: int = 0
     detail: str | None = None
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    )
 
 
 class WebSocketContextStreamer:
@@ -460,7 +463,7 @@ async def websocket_context_stream(websocket: WebSocket) -> None:
         client_id,
         WSContextUpdate(
             type="subscribed",
-            detail=f"Connected. Send {{\"type\": \"subscribe\"}} to receive updates.",
+            detail='Connected. Send {"type": "subscribe"} to receive updates.',
         ),
     )
 
@@ -484,7 +487,7 @@ def _get_allowed_origins() -> list[str]:
     return [o.strip() for o in origins_env.split(",") if o.strip()]
 
 
-def _build_cors_config() -> dict[str, list[str] | bool]:
+def _build_cors_config() -> dict[str, Any]:
     """Build CORS middleware configuration from environment."""
     origins = _get_allowed_origins()
     return {
@@ -516,9 +519,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors = _build_cors_config()
 app.add_middleware(
     CORSMiddleware,
-    **_build_cors_config(),
+    allow_origins=_cors["allow_origins"],
+    allow_credentials=_cors["allow_credentials"],
+    allow_methods=_cors["allow_methods"],
+    allow_headers=_cors["allow_headers"],
 )
 
 app.add_middleware(RateLimitMiddleware)
@@ -526,6 +533,7 @@ app.add_middleware(APIKeyAuthMiddleware)
 
 # Register WebSocket endpoint (after app is defined)
 app.add_api_websocket_route("/ws/v1/context/stream", websocket_context_stream)
+
 
 @app.get("/health")
 def health() -> dict[str, str]:

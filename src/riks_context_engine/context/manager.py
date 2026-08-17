@@ -189,9 +189,16 @@ class ContextWindowManager:
         if not msg or not msg.parent_id:
             return
 
-        # Find parent and propagate
+        # Find parent and propagate.
+        # TIER_0 (protected) does not propagate to children — a protected
+        # message (e.g. system prompt) must not force protection onto
+        # unrelated follow-ups. Lower tiers (1/2) still protect children.
         parent = next((m for m in self.messages if m.id == msg.parent_id), None)
-        if parent and parent.importance > msg.importance:
+        if (
+            parent
+            and parent.priority_tier > 0
+            and parent.importance > msg.importance
+        ):
             msg.importance = parent.importance
             msg._inherited_importance = parent.importance
             msg.priority_tier = min(msg.priority_tier, parent.priority_tier)

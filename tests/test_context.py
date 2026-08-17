@@ -41,7 +41,7 @@ class TestContextWindowManager:
 
     def test_validate_coherence(self):
         mgr = ContextWindowManager(max_tokens=10_000)
-        assert mgr.validate_coherence()['is_coherent'] is True
+        assert mgr.validate_coherence()["is_coherent"] is True
 
     def test_tokens_remaining(self):
         mgr = ContextWindowManager(max_tokens=50_000)
@@ -187,7 +187,7 @@ class TestContextWindowManager:
         # Just verify the validator works with valid state
         mgr.add(role="user", content="Hello")
         mgr.add(role="assistant", content="Hi there")
-        assert mgr.validate_coherence()['is_coherent'] is True
+        assert mgr.validate_coherence()["is_coherent"] is True
 
 
 class TestContextMessage:
@@ -323,7 +323,7 @@ class TestTokenEstimation:
     def test_special_characters_handling(self):
         """Special characters should not break estimation."""
         mgr = ContextWindowManager(model="gpt-4")
-        special = "!@#$%^&*()_+-={}[]|\\:\";<>?,./~`"
+        special = '!@#$%^&*()_+-={}[]|\\:";<>?,./~`'
         tokens = mgr._estimate_tokens(special)
         assert tokens >= 0  # Should not crash
 
@@ -352,18 +352,21 @@ class TestTokenEstimation:
     def test_long_code_block(self):
         """Long code blocks should be estimated correctly."""
         mgr = ContextWindowManager(model="gpt-4")
-        code_block = '''
+        code_block = (
+            """
 class MyClass:
     def __init__(self, value):
         self.value = value
-    
+
     def get_value(self):
         return self.value
 
 def main():
     obj = MyClass(42)
     print(obj.get_value())
-''' * 10
+"""
+            * 10
+        )
         tokens = mgr._estimate_tokens(code_block)
         assert tokens > 100  # Should be substantial for this much code
 

@@ -26,9 +26,9 @@
 **Manual test steps (if any):**
 
 ```
-1. 
-2. 
-3. 
+1.
+2.
+3.
 ```
 
 ## Checklist
