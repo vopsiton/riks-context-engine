@@ -153,6 +153,7 @@ src/riks_context_engine/
 │   ├── base.py              # MemoryEntry schema (unified 3-tier format)
 │   ├── episodic.py          # EpisodicMemory — session-level JSON store
 │   ├── semantic.py          # SemanticMemory — SQLite + ChromaDB
+│   ├── postgres.py          # PostgresSemanticMemory — optional PostgreSQL backend
 │   ├── procedural.py        # ProceduralMemory — skills & workflows
 │   └── embedding.py         # Ollama embedder integration
 ├── context/
@@ -178,6 +179,14 @@ src/riks_context_engine/
 | Procedural | JSON file (`data/procedural.json`) | Human-readable, easy to edit |
 | Knowledge Graph | SQLite (`data/knowledge_graph.db`) | Graph queries with foreign keys |
 | Context Window | In-memory | Transient, not persisted |
+
+Semantic memory also has an optional PostgreSQL backend
+(`PostgresSemanticMemory`) for deployments that need a shared, multi-process,
+or horizontally-scaled store instead of a local SQLite file. Install with the
+`postgres` extra (`pip install riks-context-engine[postgres]`) and apply the
+schema with `POSTGRES_DSN=... python scripts/migrate_postgres.py`. It exposes
+the same `add`/`get`/`query`/`recall`/`delete` interface as `SemanticMemory`,
+so it's a drop-in swap.
 
 ---
 
