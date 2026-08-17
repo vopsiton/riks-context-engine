@@ -133,27 +133,39 @@ jobs:
           provenance: false
           sbom: false
 
-      # Scan the locally built image by DIGEST (scan-ref: .) so we never
-      # try to pull an image that was built with push: false. The old
-      # `image-ref: ${{ steps.meta.outputs.tags }}` passed the comma-joined
-      # multi-tag string from metadata-action, which trivy-action could not
-      # parse as a single image reference (fatal since 2026-08-17).
-      - name: Extract image digest
-        id: digest
+      # Scan the locally built image with plain trivy (v0.74.0, matching
+      # the version previously used by the action). We run trivy directly
+      # instead of via trivy-action because the action's image-ref parsing
+      # chokes on the comma-joined multi-tag output of
+      # docker/metadata-action, and the build step runs with push: false
+      # (so nothing is on ghcr.io to pull). The image exists locally on
+      # the runner, tagged by the Build step above.
+      #
+      # Exit: 0 = no CRITICAL/HIGH findings (after .trivyignore); 1 =
+      # findings present. Documented base-image exceptions live in
+      # .github/trivy-exceptions.md with review dates (2026-11-17).
+      # Install + run trivy directly (v0.74.0, matching the previous
+      # trivy-action version). trivy-action's image-ref parsing is
+      # unreliable with docker/metadata-action's comma-joined multi-tag
+      # output, and the build step runs push: false so there is nothing
+      # on ghcr.io to pull — we scan the local image by tag instead.
+      - name: Install Trivy v0.74.0
         run: |
-          DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' \
-            "ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}" | cut -d'@' -f2)"
-          echo "digest=sha256:${DIGEST#sha256:}" >> "$GITHUB_OUTPUT"
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin v0.74.0
+          trivy --version
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-ref: .
-          image-ref: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}@sha256:${{ steps.digest.outputs.digest }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-          ignorefile: .trivyignore
+        run: |
+          # First local tag the Build step applied (single, parse-safe;
+          # the metadata-action tags output is comma-joined).
+          TAG="$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1 | xargs)"
+          echo "Scanning local image: ${TAG}"
+          trivy image "${TAG}" \
+            --severity CRITICAL,HIGH \
+            --ignorefile .trivyignore \
+            --timeout 10m
+          # trivy exits 0 when no (un-ignored) CRITICAL/HIGH findings.
 
       - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v3
