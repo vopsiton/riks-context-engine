@@ -7,8 +7,13 @@ from typing import Any
 
 from ..context.manager import ContextWindowManager
 from ..memory import EpisodicMemory, ProceduralMemory, SemanticMemory
+from ..multi_tenant import TenantContextRegistry, TenantValidationError, validate_tenant_id
 
 logger = logging.getLogger(__name__)
+
+
+class TenantIsolationError(Exception):
+    """Raised when a tool call fails tenant validation/isolation."""
 
 
 class ToolHandler:
@@ -21,12 +26,14 @@ class ToolHandler:
         procedural_memory: ProceduralMemory | None = None,
         context_manager: ContextWindowManager | None = None,
         data_dir: str | None = None,
+        tenant_registry: TenantContextRegistry | None = None,
     ):
         self.data_dir = data_dir or "data"
         self._episodic = episodic_memory
         self._semantic = semantic_memory
         self._procedural = procedural_memory
         self._context = context_manager
+        self._tenant_registry = tenant_registry or TenantContextRegistry()
 
     # -- Lazy initialisers ---------------------------------------------------
 
@@ -195,14 +202,19 @@ class ToolHandler:
         return {"json": json.dumps(export_data, indent=2, default=str)}
 
     def context_add_message(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Add a message to the context window."""
+        """Add a message to the caller's tenant context window (#102)."""
+        try:
+            tenant_id = validate_tenant_id(params.get("tenant_id"))
+        except TenantValidationError as exc:
+            raise TenantIsolationError(str(exc)) from exc
         role = params.get("role", "user")
         content = params.get("content", "")
         importance = params.get("importance", 0.5)
         is_grounding = params.get("is_grounding", False)
 
         try:
-            msg = self._get_context().add(
+            # Per-tenant manager: structural isolation (A can't see B).
+            msg = self._tenant_registry.get(tenant_id).add(
                 role=role,
                 content=content,
                 importance=importance,
@@ -219,9 +231,12 @@ class ToolHandler:
             raise
 
     def context_get_summary(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Get context window statistics."""
-        del params
-        ctx = self._get_context()
+        """Get the caller's tenant context window statistics (#102)."""
+        try:
+            tenant_id = validate_tenant_id(params.get("tenant_id"))
+        except TenantValidationError as exc:
+            raise TenantIsolationError(str(exc)) from exc
+        ctx = self._tenant_registry.get(tenant_id)
         stats = ctx.stats
         return {
             "current_tokens": stats.current_tokens,

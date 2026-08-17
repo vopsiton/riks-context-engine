@@ -100,6 +100,13 @@ class TestToolSchemas:
         assert schema is not None
         assert "role" in schema["inputSchema"]["required"]
         assert "content" in schema["inputSchema"]["required"]
+        # #102: tenant isolation makes tenant_id a required param
+        assert "tenant_id" in schema["inputSchema"]["required"]
+
+    def test_context_get_summary_requires_tenant(self) -> None:
+        schema = get_tool_schema("context_get_summary")
+        assert schema is not None
+        assert "tenant_id" in schema["inputSchema"]["required"]
 
     def test_list_tools_returns_all(self) -> None:
         tools = list_tools()
@@ -169,7 +176,7 @@ class TestMCPServer:
         result = server.handle_tools_call(
             {
                 "name": "context_add_message",
-                "arguments": {"role": "user", "content": "Hello world"},
+                "arguments": {"tenant_id": "t-mcp", "role": "user", "content": "Hello world"},
             }
         )
         assert "content" in result
@@ -178,7 +185,9 @@ class TestMCPServer:
         assert "added" in text
 
     def test_context_get_summary(self, server: MCPServer) -> None:
-        result = server.handle_tools_call({"name": "context_get_summary", "arguments": {}})
+        result = server.handle_tools_call(
+            {"name": "context_get_summary", "arguments": {"tenant_id": "t-mcp"}}
+        )
         assert "content" in result
         text = result["content"][0]["text"]
         # Should contain token stats
@@ -317,7 +326,11 @@ class TestMCPIntegration:
                 "method": "tools/call",
                 "params": {
                     "name": "context_add_message",
-                    "arguments": {"role": "user", "content": "test message"},
+                    "arguments": {
+                        "tenant_id": "t-integ",
+                        "role": "user",
+                        "content": "test message",
+                    },
                 },
             },
         )
@@ -331,7 +344,10 @@ class TestMCPIntegration:
                 "jsonrpc": "2.0",
                 "id": 4,
                 "method": "tools/call",
-                "params": {"name": "context_get_summary", "arguments": {}},
+                "params": {
+                    "name": "context_get_summary",
+                    "arguments": {"tenant_id": "t-integ"},
+                },
             },
         )
         assert summary_resp is not None
