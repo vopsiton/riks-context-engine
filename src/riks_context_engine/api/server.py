@@ -31,6 +31,12 @@ from riks_context_engine.memory.export import (
 )
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
+from riks_context_engine.multi_tenant import (
+    TENANT_HEADER,
+    TenantContextRegistry,
+    TenantValidationError,
+    validate_tenant_id,
+)
 
 
 class ChatRequest(BaseModel):
@@ -50,7 +56,15 @@ API_KEY = os.environ.get("API_KEY", "")
 # ─── API Key Middleware ────────────────────────────────────────────────────────
 
 _API_KEY_PROTECTED_PATHS = frozenset(
-    ["/", "/api/chat", "/api/v1/memory/export", "/api/v1/memory/import", "/models"]
+    [
+        "/",
+        "/api/chat",
+        "/api/v1/memory/export",
+        "/api/v1/memory/import",
+        "/models",
+        "/api/v1/context/messages",
+        "/api/v1/context/summary",
+    ]
 )
 
 
@@ -61,6 +75,30 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in _API_KEY_PROTECTED_PATHS and API_KEY:
             if request.headers.get("X-API-Key") != API_KEY:
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return await call_next(request)
+
+
+# ─── Tenant Isolation (closes part of #102) ──────────────────────────────────
+
+
+class TenantAuthMiddleware(BaseHTTPMiddleware):
+    """Validate the X-Tenant-Id header on protected paths (#102).
+
+    Consistent contract (all tenant-validation failures -> 401):
+    - header missing -> 401
+    - header empty/whitespace -> 401
+    - header malformed (bad chars / >64 chars) -> 401
+
+    The validated id is stored on ``request.state.tenant_id`` for
+    downstream handlers.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path in _API_KEY_PROTECTED_PATHS:
+            try:
+                request.state.tenant_id = validate_tenant_id(request.headers.get(TENANT_HEADER))
+            except TenantValidationError as exc:
+                return JSONResponse(status_code=401, content={"detail": exc.detail})
         return await call_next(request)
 
 
@@ -162,6 +200,10 @@ def _set_context_manager(mgr: ContextWindowManager | None) -> None:
 def _get_context_manager() -> ContextWindowManager | None:  # noqa: F821
     """Get the module-level context manager."""
     return _context_manager
+
+
+# Module-level tenant-scoped context registry (#102)
+_tenant_registry = TenantContextRegistry()
 
 
 # ─── WebSocket Context Streaming ───────────────────────────────────────────────
@@ -530,6 +572,8 @@ app.add_middleware(
 
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(APIKeyAuthMiddleware)
+# Tenant isolation MUST run after API-key auth: auth first, then scope.
+app.add_middleware(TenantAuthMiddleware)
 
 # Register WebSocket endpoint (after app is defined)
 app.add_api_websocket_route("/ws/v1/context/stream", websocket_context_stream)
@@ -562,6 +606,62 @@ def chat(req: ChatRequest) -> ChatResponse:
 def root() -> FileResponse:
     ui_path = os.environ.get("UI_PATH", "ui/index.html")
     return FileResponse(ui_path)
+
+
+# ─── Context Endpoints (tenant-scoped, #102) ──────────────────────────────────
+
+
+class ContextAddRequest(BaseModel):
+    role: str = Field("user", description="user | assistant | system")
+    content: str = Field(..., description="Message content")
+    importance: float = Field(0.5, ge=0.0, le=1.0)
+
+
+@app.post("/api/v1/context/messages")
+def context_add_message(req: ContextAddRequest, request: Request) -> dict[str, Any]:
+    """Append a message to the caller's tenant context window."""
+    tenant_id: str = request.state.tenant_id  # set by TenantAuthMiddleware
+    if req.role not in ("user", "assistant", "system"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    msg = _tenant_registry.get(tenant_id).add(
+        role=req.role, content=req.content, importance=req.importance
+    )
+    return {"message_id": msg.id, "role": msg.role, "tokens": msg.tokens, "status": "added"}
+
+
+@app.get("/api/v1/context/messages")
+def context_list_messages(request: Request) -> list[dict[str, Any]]:
+    """List the caller's tenant context window. Isolated per tenant."""
+    tenant_id: str = request.state.tenant_id
+    msgs = _tenant_registry.get(tenant_id).get_messages(include_pruned=False)
+    return [
+        {
+            "id": m.id,
+            "role": m.role,
+            "content": m.content,
+            "timestamp": m.timestamp.isoformat(),
+            "importance": m.importance,
+            "tokens": m.tokens,
+        }
+        for m in msgs
+    ]
+
+
+@app.get("/api/v1/context/summary")
+def context_summary(request: Request) -> dict[str, Any]:
+    """Context window stats for the caller's tenant only."""
+    tenant_id: str = request.state.tenant_id
+    stats = _tenant_registry.get(tenant_id).stats
+    return {
+        "current_tokens": stats.current_tokens,
+        "max_tokens": stats.max_tokens,
+        "messages_count": stats.messages_count,
+        "active_messages_count": stats.active_messages_count,
+        "pruning_count": stats.pruning_count,
+        "last_prune_timestamp": (
+            stats.last_prune_timestamp.isoformat() if stats.last_prune_timestamp else None
+        ),
+    }
 
 
 # ─── Memory Export/Import Endpoints ───────────────────────────────────────────

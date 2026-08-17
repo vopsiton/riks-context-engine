@@ -212,4 +212,5 @@ class PostgresSemanticMemory:
     def delete(self, entry_id: str) -> bool:
         with self._conn.cursor() as cur:
             cur.execute("DELETE FROM semantic_entries WHERE id = %s", (entry_id,))
-            return cur.rowcount > 0
+            rowcount: int = int(cur.rowcount or 0)
+            return rowcount > 0

@@ -98,10 +98,14 @@ TOOL_SCHEMAS = {
     },
     "context_add_message": {
         "name": "context_add_message",
-        "description": "Add a message to the active context window.",
+        "description": "Add a message to the tenant's context window.",
         "inputSchema": {
             "type": "object",
             "properties": {
+                "tenant_id": {
+                    "type": "string",
+                    "description": "Tenant id (X-Tenant-Id); required for isolation (#102)",
+                },
                 "role": {
                     "type": "string",
                     "enum": ["user", "assistant", "system"],
@@ -124,15 +128,21 @@ TOOL_SCHEMAS = {
                     "default": False,
                 },
             },
-            "required": ["role", "content"],
+            "required": ["tenant_id", "role", "content"],
         },
     },
     "context_get_summary": {
         "name": "context_get_summary",
-        "description": "Get current context window statistics and token usage.",
+        "description": "Get the tenant's context window statistics and token usage.",
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "tenant_id": {
+                    "type": "string",
+                    "description": "Tenant id (X-Tenant-Id); required for isolation (#102)",
+                },
+            },
+            "required": ["tenant_id"],
         },
     },
     "health_check": {
