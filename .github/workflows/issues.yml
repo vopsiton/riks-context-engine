@@ -166,10 +166,11 @@ jobs:
     if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'labeled')
     # Explicit minimum token scope (#117): even when repo-level workflow
     # permissions are "read", this job self-declares what it needs.
-    permissions:
-      pull-requests: read
-      issues: write
-      contents: read
+    # NOTE (#117): the GITHUB_TOKEN used here also needs repo-level
+    # "Workflow permissions: read and write" (Settings -> Developer tools
+    # -> GitHub Actions). Job-level declarations above only grant what
+    # this job asks for; if the repo default is read-only, label writes
+    # still fail. Minimum required scope: issues: write.
     steps:
       - name: Check size
         uses: actions/github-script@v7
