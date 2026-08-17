@@ -11,7 +11,6 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from riks_context_engine.api import server as server_module
 from riks_context_engine.api.server import app
 from riks_context_engine.multi_tenant import (
     TENANT_HEADER,
@@ -133,12 +132,8 @@ class TestContextIsolation:
             json={"role": "assistant", "content": "isolated-payload"},
             headers=_headers(VALID_TENANT),
         )
-        summary_a = client.get(
-            "/api/v1/context/summary", headers=_headers(VALID_TENANT)
-        ).json()
-        summary_b = client.get(
-            "/api/v1/context/summary", headers=_headers(VALID_TENANT_B)
-        ).json()
+        summary_a = client.get("/api/v1/context/summary", headers=_headers(VALID_TENANT)).json()
+        summary_b = client.get("/api/v1/context/summary", headers=_headers(VALID_TENANT_B)).json()
         assert summary_a["messages_count"] > 0
         assert summary_b["messages_count"] == 0
 
