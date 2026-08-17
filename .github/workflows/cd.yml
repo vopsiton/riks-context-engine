@@ -104,30 +104,24 @@ jobs:
     needs: [lint, type-check, test]
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
+      image-tag: ghcr.io/${{ github.repository }}:ci-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=sha,prefix=sha-
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=sha,prefix=,suffix=-${{ github.sha }},event=workflow
-
-      - name: Build image
+      # Single, explicit tag (was: docker/metadata-action multi-tag output,
+      # which trivy-action could not parse). The image is built locally
+      # (push: false) and scanned by this same tag; deploy jobs use their
+      # own metadata actions and are unaffected.
+      - name: Build image (local, single tag)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          tags: ghcr.io/${{ github.repository }}:ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
@@ -157,11 +151,8 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         run: |
-          # metadata-action's 'tags' output is space-newline separated,
-          # not comma-joined — take the FIRST line only so trivy gets a
-          # single, parse-safe reference (the build step tagged all of
-          # them locally).
-          TAG="$(echo "${{ steps.meta.outputs.tags }}" | head -n 1 | xargs)"
+          # Single explicit tag from the Build step (deterministic).
+          TAG="ghcr.io/${{ github.repository }}:ci-${{ github.sha }}"
           echo "Scanning local image: ${TAG}"
           trivy image "${TAG}" \
             --severity CRITICAL,HIGH \
