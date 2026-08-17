@@ -152,11 +152,14 @@ jobs:
       - name: Run Trivy vulnerability scanner
         run: |
           # Single explicit tag from the Build step (deterministic).
+          # --format sarif + --output feeds the upload step below.
           TAG="ghcr.io/${{ github.repository }}:ci-${{ github.sha }}"
           echo "Scanning local image: ${TAG}"
           trivy image "${TAG}" \
             --severity CRITICAL,HIGH \
             --ignorefile .trivyignore \
+            --format sarif \
+            --output trivy-results.sarif \
             --timeout 10m
           # trivy exits 0 when no (un-ignored) CRITICAL/HIGH findings.
 
