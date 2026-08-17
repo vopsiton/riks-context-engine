@@ -157,9 +157,11 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         run: |
-          # First local tag the Build step applied (single, parse-safe;
-          # the metadata-action tags output is comma-joined).
-          TAG="$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1 | xargs)"
+          # metadata-action's 'tags' output is space-newline separated,
+          # not comma-joined — take the FIRST line only so trivy gets a
+          # single, parse-safe reference (the build step tagged all of
+          # them locally).
+          TAG="$(echo "${{ steps.meta.outputs.tags }}" | head -n 1 | xargs)"
           echo "Scanning local image: ${TAG}"
           trivy image "${TAG}" \
             --severity CRITICAL,HIGH \
