@@ -8,7 +8,10 @@ import requests
 API_BASE = "http://127.0.0.1:9000"
 
 
-@pytest.mark.skip(reason="UI server not running in CI environment")
+@pytest.mark.xfail(
+    strict=False,
+    reason="requires live UI server on 127.0.0.1:9000 (manual/dev E2E, not part of CI test run); auto-passes when run against a live server",
+)
 class TestUIBasicConnectivity:
     def test_ui_loads(self):
         r = requests.get(f"{API_BASE}/", timeout=5)
