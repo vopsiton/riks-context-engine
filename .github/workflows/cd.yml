@@ -163,10 +163,19 @@ jobs:
             --timeout 10m
           # trivy exits 0 when no (un-ignored) CRITICAL/HIGH findings.
 
+      # codeql-action needs the security-events:write scope which the
+      # repo's GITHUB_TOKEN lacks ("Resource not accessible by integration").
+      # Upload the SARIF as a regular artifact instead: the vulnerability
+      # findings remain available (Actions run page -> Artifacts) and the
+      # scan gate (trivy exit code) is unaffected.
       - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: trivy-results.sarif
+          name: trivy-results
+          path: trivy-results.sarif
+          if-no-files-found: warn
+          retention-days: 14
 
   # ===== Stage 3: Deploy to Staging (Master Push) ===== #
   deploy-staging:
