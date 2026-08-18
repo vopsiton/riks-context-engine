@@ -23,6 +23,12 @@ def reset_engine():
 
 @pytest.fixture
 def client():
-    """Return a TestClient for the FastAPI app."""
-    with TestClient(app) as c:
+    """Return a TestClient for the FastAPI app.
+
+    Sends a valid X-Tenant-Id header so the tenant-isolation middleware
+    (which 401s on every protected path without a well-formed tenant)
+    lets API calls through. Tests asserting tenant validation (401)
+    should pass explicit headers to override this default.
+    """
+    with TestClient(app, headers={"X-Tenant-Id": "test-tenant"}) as c:
         yield c

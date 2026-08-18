@@ -2,6 +2,14 @@
 
 Covers AC-51-01 (10 thread concurrent write → 0 "Database is locked"),
 AC-51-02 (WAL mode enabled), AC-51-03 (context manager usage).
+
+2026-08-19 stale-test cleanup: the class-level skip claimed "SQLite WAL mode
+not available in CI environment" — a false assumption, not a real constraint.
+Running the tests on current master shows the underlying feature (WAL mode +
+write lock, issue #51, commits edd1617/3009bfd on unmerged feature branches)
+was never merged: 5 WAL/write-lock tests fail ('Expected WAL mode, got: delete').
+Those are now marked xfail(strict=False) to document the gap and auto-pass
+when #51 lands; the 6 tests that pass on master run normally.
 """
 
 import os
@@ -16,12 +24,15 @@ from riks_context_engine.graph.knowledge_graph import EntityType, KnowledgeGraph
 from riks_context_engine.memory.semantic import SemanticMemory
 
 
-@pytest.mark.skip(reason="SQLite WAL mode not available in CI environment")
 class TestThreadSafeSQLite:
     """AC-51: Thread-safe SQLite operations."""
 
     # ── AC-51-01: 10 thread concurrent writes → 0 "Database is locked" ──
 
+    @pytest.mark.xfail(
+        strict=False,
+        reason="feature gap: #51 WAL mode + write lock never merged to master (commits edd1617/3009bfd on unmerged branches); auto-passes when #51 lands",
+    )
     def test_concurrent_writes_no_database_locked_error(self):
         """10 threads writing simultaneously should produce 0 'database is locked' errors.
 
@@ -69,6 +80,10 @@ class TestThreadSafeSQLite:
         # All 50 writes should succeed (10 threads × 5 writes)
         assert len(successes) == 50, f"Expected 50 successes, got {len(successes)}"
 
+    @pytest.mark.xfail(
+        strict=False,
+        reason="feature gap: #51 WAL mode + write lock never merged to master (commits edd1617/3009bfd on unmerged branches); auto-passes when #51 lands",
+    )
     def test_concurrent_reads_and_writes(self):
         """Concurrent readers and writers should not block each other unnecessarily.
 
@@ -163,6 +178,10 @@ class TestThreadSafeSQLite:
 
     # ── AC-51-02: WAL mode enabled ───────────────────────────────────────
 
+    @pytest.mark.xfail(
+        strict=False,
+        reason="feature gap: #51 WAL mode + write lock never merged to master (commits edd1617/3009bfd on unmerged branches); auto-passes when #51 lands",
+    )
     def test_wal_mode_is_enabled(self):
         """Verify WAL journal mode is enabled on the database."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
@@ -181,6 +200,10 @@ class TestThreadSafeSQLite:
 
         assert journal_mode.upper() == "WAL", f"Expected WAL mode, got: {journal_mode}"
 
+    @pytest.mark.xfail(
+        strict=False,
+        reason="feature gap: #51 WAL mode + write lock never merged to master (commits edd1617/3009bfd on unmerged branches); auto-passes when #51 lands",
+    )
     def test_wal_mode_persists_after_write(self):
         """WAL mode should remain enabled even after many writes."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
@@ -269,6 +292,10 @@ class TestThreadSafeSQLite:
         results = mem.query(subject="Rik")
         assert len(results) >= 1
 
+    @pytest.mark.xfail(
+        strict=False,
+        reason="feature gap: #51 WAL mode + write lock never merged to master (commits edd1617/3009bfd on unmerged branches); auto-passes when #51 lands",
+    )
     def test_delete_is_thread_safe(self):
         """Delete operation should be thread-safe and serialized."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
