@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from fastapi.testclient import TestClient
-
 
 # ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -150,7 +148,9 @@ class TestContextSummary:
     def test_summary_after_messages(self, client: TestClient):
         tenant = {"X-Tenant-Id": "tenant-summary"}
         before = client.get("/api/v1/context/summary", headers=tenant).json()["messages_count"]
-        client.post("/api/v1/context/messages", json={"role": "user", "content": "Hello"}, headers=tenant)
+        client.post(
+            "/api/v1/context/messages", json={"role": "user", "content": "Hello"}, headers=tenant
+        )
         client.post(
             "/api/v1/context/messages",
             json={"role": "assistant", "content": "Hi"},

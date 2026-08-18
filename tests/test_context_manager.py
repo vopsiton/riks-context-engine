@@ -179,10 +179,11 @@ class TestEstimateTokens:
     """Cover _estimate_tokens fallback paths."""
 
     def test_english_basic(self) -> None:
-        """English text: ~4 chars/token approximation."""
+        """English text: ~4 chars/token approximation (deterministic, no tiktoken dependency)."""
         mgr = ContextWindowManager()
-        tokens = mgr._estimate_tokens("a" * 40)
-        assert tokens == 10  # 40 / CHAR_PER_TOKEN(4)
+        text = "a" * 40
+        # No CJK chars → pure base estimate: 40 / CHAR_PER_TOKEN(4) = 10
+        assert mgr._estimate_tokens(text) == int(len(text) / 4)
 
     def test_code_indicators(self) -> None:
         """Code text still estimates positively."""
@@ -192,12 +193,11 @@ class TestEstimateTokens:
         assert tokens > 0  # Reasonable token count
 
     def test_cjk_text(self) -> None:
-        """CJK: ~1 token per CJK char (cjk_correction adds ~3/4 char per CJK char)."""
+        """CJK: ~1 token per CJK char (base + cjk_correction, deterministic)."""
         mgr = ContextWindowManager()
         cjk = "你好"  # 2 CJK chars
-        tokens = mgr._estimate_tokens(cjk)
-        # base: 2/4 = 0.5; cjk correction: 2 - 2/4 = 1.5 → int(2.0) = 2
-        assert tokens == 2
+        # base: 2/4 = 0.5; cjk_correction: 2 - 2/4 = 1.5 → int(2.0) = 2
+        assert mgr._estimate_tokens(cjk) == int(2 / 4 + (2 - 2 / 4))
 
 
 # ─── get_messages ─────────────────────────────────────────────────────────────
