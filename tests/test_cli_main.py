@@ -1,6 +1,17 @@
-"""Test CLI main module for coverage."""
+"""Test CLI main entry point (#124).
+
+2026-08-19: updated after `riks memory add/query` became real implementations
+(#124 turn 1). The old placeholder tests asserted the fake
+"Command executed successfully" no-op behavior — replaced with honest
+assertions: implemented commands return 0, unimplemented ones return 1 and
+say so. Full integration coverage lives in tests/test_cli_memory.py.
+"""
+
+import sys
 
 import pytest
+
+from riks_context_engine.cli.main import main
 
 
 class TestCLI:
@@ -8,131 +19,63 @@ class TestCLI:
 
     def test_main_version_flag(self, capsys):
         """Test riks --version outputs version."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
         sys.argv = ["riks", "--version"]
         result = main()
-        capsys.readouterr()
+        out = capsys.readouterr().out
         assert result == 0
+        assert "riks-context-engine" in out
 
     def test_main_no_args(self, capsys):
         """Test riks with no args shows help."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
         sys.argv = ["riks"]
         result = main()
         capsys.readouterr()
         # Returns 1, prints help
         assert result == 1
 
-    def test_main_memory_stats(self, capsys):
-        """Test riks memory stats."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
-        sys.argv = ["riks", "memory", "stats"]
-        result = main()
-        captured = capsys.readouterr()
-        assert "Command executed" in captured.out or result == 0
-
-    def test_main_memory_add(self, capsys):
-        """Test riks memory add."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
+    def test_main_memory_add_requires_content(self, capsys):
+        """memory add with no content must fail with a real error (#124)."""
         sys.argv = ["riks", "memory", "add"]
         result = main()
-        captured = capsys.readouterr()
-        assert "Command executed" in captured.out or result == 0
+        err = capsys.readouterr().err
+        assert result != 0
+        assert "error:" in err
 
-    def test_main_memory_query(self, capsys):
-        """Test riks memory query."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
+    def test_main_memory_query_requires_term(self, capsys):
+        """memory query with no term must fail with a real error (#124)."""
         sys.argv = ["riks", "memory", "query"]
         result = main()
-        captured = capsys.readouterr()
-        assert "Command executed" in captured.out or result == 0
+        err = capsys.readouterr().err
+        assert result != 0
+        assert "error:" in err
 
-    def test_main_context_stats(self, capsys):
-        """Test riks context stats."""
-        import sys
+    def test_main_unimplemented_commands_report_honestly(self, capsys):
+        """context/task/reflect are out of scope for #124 turn 1: they must NOT
+        pretend success — exit code 1 + 'not implemented yet'."""
+        for argv in (
+            ["riks", "memory", "stats"],
+            ["riks", "context", "stats"],
+            ["riks", "context", "prune"],
+            ["riks", "context", "clear"],
+            ["riks", "task", "test goal"],
+            ["riks", "reflect", "--session", "test-session"],
+        ):
+            sys.argv = argv
+            result = main()
+            out = capsys.readouterr()
+            combined = out.out + out.err
+            assert result == 1
+            assert "not implemented yet" in combined
+            assert "Command executed successfully" not in combined
 
-        from riks_context_engine.cli.main import main
-
-        sys.argv = ["riks", "context", "stats"]
-        result = main()
-        captured = capsys.readouterr()
-        assert "Command executed" in captured.out or result == 0
-
-    def test_main_context_prune(self, capsys):
-        """Test riks context prune."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
-        sys.argv = ["riks", "context", "prune"]
-        result = main()
-        captured = capsys.readouterr()
-        assert "Command executed" in captured.out or result == 0
-
-    def test_main_context_clear(self, capsys):
-        """Test riks context clear."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
-        sys.argv = ["riks", "context", "clear"]
-        result = main()
-        captured = capsys.readouterr()
-        assert "Command executed" in captured.out or result == 0
-
-    def test_main_task_command(self, capsys):
-        """Test riks task <goal>."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
-        sys.argv = ["riks", "task", "test goal"]
-        result = main()
-        captured = capsys.readouterr()
-        assert "Command executed" in captured.out or result == 0
-
-    def test_main_reflection(self, capsys):
-        """Test riks reflect --session."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
-        sys.argv = ["riks", "reflect", "--session", "test-session"]
-        result = main()
-        captured = capsys.readouterr()
-        assert "Command executed" in captured.out or result == 0
-
-    def test_main_unknown_command_exits_with_error(self, capsys):
+    def test_main_unknown_command_exits_with_error(self):
         """Test riks with unknown command."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
         sys.argv = ["riks", "unknown_cmd"]
         with pytest.raises(SystemExit):
             main()
 
-    def test_main_memory_invalid_type(self, capsys):
+    def test_main_memory_invalid_type(self):
         """Test riks memory with invalid type."""
-        import sys
-
-        from riks_context_engine.cli.main import main
-
         sys.argv = ["riks", "memory", "--type", "invalid", "add"]
         with pytest.raises(SystemExit):
             main()
