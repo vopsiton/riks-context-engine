@@ -118,16 +118,21 @@ class TestContextMessages:
         assert len(res.json()) > 0
 
     def test_context_isolated_per_tenant(self, client: TestClient):
-        """Tenant A cannot see tenant B's context (middleware scopes per header)."""
+        """Tenant isolation (middleware scopes per header).
+
+        Uses unique tenant ids: the per-tenant context registry is
+        process-wide, so tenants shared with other test files (e.g.
+        tenant-a/b in test_tenant_isolation.py) would leak state.
+        """
         res_a = client.post(
             "/api/v1/context/messages",
             json={"role": "user", "content": "tenant A secret"},
-            headers={"X-Tenant-Id": "tenant-a"},
+            headers={"X-Tenant-Id": "tenant-iso-a"},
         )
         assert res_a.status_code == 200
         res_b = client.get(
             "/api/v1/context/messages",
-            headers={"X-Tenant-Id": "tenant-b"},
+            headers={"X-Tenant-Id": "tenant-iso-b"},
         )
         assert res_b.status_code == 200
         assert res_b.json() == []
