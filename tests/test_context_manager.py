@@ -249,38 +249,25 @@ class TestEstimateTokens:
     """Cover _estimate_tokens fallback paths."""
 
     def test_english_basic(self) -> None:
-        """English text: tiktoken when available, else len/4 approximation.
-
-        tiktoken correctly gives ~4 chars/token for English, so 'a'*40
-        yields ~10 tokens (not 5 as char-based would give). The test accepts
-        both: tiktoken path (5 tokens) or char-based fallback (10 tokens).
-        """
+        """English text: ~4 chars/token approximation."""
         mgr = ContextWindowManager()
-        text = "a" * 40
-        tokens = mgr._estimate_tokens(text)
-        # tiktoken: 40 chars / 4 = 10 chars/token → 5 tokens
-        # char fallback: 40 / 4 = 10 tokens
-        # Both are valid; accept range [5, 12]
-        assert 5 <= tokens <= 12
+        tokens = mgr._estimate_tokens("a" * 40)
+        assert tokens == 10  # 40 / CHAR_PER_TOKEN(4)
 
     def test_code_indicators(self) -> None:
-        """Code blocks → 1.3x multiplier (char-based path)."""
+        """Code text still estimates positively."""
         mgr = ContextWindowManager()
         code = "def hello():\n    print('hello world')"
         tokens = mgr._estimate_tokens(code)
         assert tokens > 0  # Reasonable token count
 
-    @pytest.mark.skip(reason="pre-existing incorrect test expectations")
     def test_cjk_text(self) -> None:
-        """CJK: 2 chars per token via non-Latin bypass (bypasses tiktoken).
-
-        Non-Latin check happens BEFORE tiktoken call, so CJK text always
-        uses the len(text)//2 path regardless of tiktoken availability.
-        """
+        """CJK: ~1 token per CJK char (cjk_correction adds ~3/4 char per CJK char)."""
         mgr = ContextWindowManager()
-        cjk = "你好" * 10  # 20 chars → 10 tokens (2 chars/token)
+        cjk = "你好"  # 2 CJK chars
         tokens = mgr._estimate_tokens(cjk)
-        assert tokens == 10  # 20 / 2 = 10
+        # base: 2/4 = 0.5; cjk correction: 2 - 2/4 = 1.5 → int(2.0) = 2
+        assert tokens == 2
 
 
 # ─── get_messages ─────────────────────────────────────────────────────────────
