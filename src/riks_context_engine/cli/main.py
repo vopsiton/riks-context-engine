@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import Any
 
 
 # CLI storage locations — overridable via env for tests and deployments.
@@ -70,15 +71,30 @@ def _parse_steps_strict(raw: str) -> list[str]:
     """Strict --steps parse for procedural add: must be newline-separated or a JSON array."""
     raw = raw.strip()
     if raw.startswith("["):
-        try:
-            return _parse_steps(raw)
-        except ValueError:
-            raise
+        return _parse_steps(raw)
     if "\n" not in raw:
         raise ValueError(
-            "--steps must be newline-separated or a JSON array; for a single step wrap it in quotes with at least one newline or use JSON: ['step']"
+            "--steps must be newline-separated or a JSON array; "
+            "for a single step use JSON: ['step']"
         )
     return _parse_steps(raw)
+
+
+def _print_episodic_results(results: list[Any]) -> None:
+    for e in results:
+        tags = f" [{', '.join(e.tags)}]" if e.tags else ""
+        print(f"{e.id}  importance={e.importance:.2f}  {e.content}{tags}")
+
+
+def _print_semantic_results(results: list[Any]) -> None:
+    for e in results:
+        obj = f" {e.object}" if e.object else ""
+        print(f"{e.id}  {e.subject} {e.predicate}{obj}  (confidence={e.confidence:.2f})")
+
+
+def _print_procedural_results(results: list[Any]) -> None:
+    for p in results:
+        print(f"{p.id}  {p.name}: {p.description} ({len(p.steps)} steps)")
 
 
 def cmd_memory_add(args: argparse.Namespace, text: str | None, extras: list[str]) -> int:
@@ -97,7 +113,7 @@ def cmd_memory_add(args: argparse.Namespace, text: str | None, extras: list[str]
         from riks_context_engine.memory.episodic import EpisodicMemory
 
         try:
-            mem = EpisodicMemory(storage_path=epi_json)
+            mem: Any = EpisodicMemory(storage_path=epi_json)
             entry = mem.add(text)
         except Exception as exc:  # noqa: BLE001 — surface real storage errors
             return _err(f"failed to add episodic memory: {exc}")
@@ -160,16 +176,14 @@ def cmd_memory_query(args: argparse.Namespace, text: str | None) -> int:
         from riks_context_engine.memory.episodic import EpisodicMemory
 
         try:
-            mem = EpisodicMemory(storage_path=epi_json)
-            results = mem.query(text, limit=args.limit)
+            mem: Any = EpisodicMemory(storage_path=epi_json)
+            results: list[Any] = mem.query(text, limit=args.limit)
         except Exception as exc:  # noqa: BLE001
             return _err(f"failed to query episodic memory: {exc}")
         if not results:
             print("no episodic matches")
             return 0
-        for e in results:
-            tags = f" [{', '.join(e.tags)}]" if e.tags else ""
-            print(f"{e.id}  importance={e.importance:.2f}  {e.content}{tags}")
+        _print_episodic_results(results)
         return 0
 
     if args.type == "semantic":
@@ -185,9 +199,7 @@ def cmd_memory_query(args: argparse.Namespace, text: str | None) -> int:
         if not results:
             print("no semantic matches")
             return 0
-        for e in results:
-            obj = f" {e.object}" if e.object else ""
-            print(f"{e.id}  {e.subject} {e.predicate}{obj}  (confidence={e.confidence:.2f})")
+        _print_semantic_results(results)
         return 0
 
     # procedural
@@ -201,8 +213,7 @@ def cmd_memory_query(args: argparse.Namespace, text: str | None) -> int:
     if not results:
         print("no procedural matches")
         return 0
-    for p in results:
-        print(f"{p.id}  {p.name}: {p.description} ({len(p.steps)} steps)")
+    _print_procedural_results(results)
     return 0
 
 
