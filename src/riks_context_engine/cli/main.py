@@ -11,11 +11,17 @@ import argparse
 import os
 import sys
 
+
 # CLI storage locations — overridable via env for tests and deployments.
-DATA_DIR = os.environ.get("RIKS_DATA_DIR", "data")
-SEMANTIC_DB = os.environ.get("RIKS_SEMANTIC_DB", os.path.join(DATA_DIR, "semantic.db"))
-EPISODIC_JSON = os.environ.get("RIKS_EPISODIC_JSON", os.path.join(DATA_DIR, "episodic.json"))
-PROCEDURAL_JSON = os.environ.get("RIKS_PROCEDURAL_JSON", os.path.join(DATA_DIR, "procedural.json"))
+# Evaluated lazily (at store-construction time) so monkeypatched env vars in
+# tests take effect without reloading the module.
+def _store_paths() -> tuple[str, str, str]:
+    data_dir = os.environ.get("RIKS_DATA_DIR", "data")
+    return (
+        os.environ.get("RIKS_SEMANTIC_DB", os.path.join(data_dir, "semantic.db")),
+        os.environ.get("RIKS_EPISODIC_JSON", os.path.join(data_dir, "episodic.json")),
+        os.environ.get("RIKS_PROCEDURAL_JSON", os.path.join(data_dir, "procedural.json")),
+    )
 
 
 def _err(msg: str) -> int:
@@ -29,10 +35,11 @@ def _memory_store_paths() -> tuple[str, str, str]:
 
     RIKS_TENANT_ID empty/absent → default tenant (shared legacy paths).
     """
+    sem_db, epi_json, proc_json = _store_paths()
     tenant = os.environ.get("RIKS_TENANT_ID", "").strip()
     if not tenant:
-        return SEMANTIC_DB, EPISODIC_JSON, PROCEDURAL_JSON
-    base = os.path.join(DATA_DIR, "tenants", tenant)
+        return sem_db, epi_json, proc_json
+    base = os.path.join(os.environ.get("RIKS_DATA_DIR", "data"), "tenants", tenant)
     return (
         os.path.join(base, "semantic.db"),
         os.path.join(base, "episodic.json"),
@@ -68,7 +75,9 @@ def _parse_steps_strict(raw: str) -> list[str]:
         except ValueError:
             raise
     if "\n" not in raw:
-        raise ValueError("--steps must be newline-separated or a JSON array; for a single step wrap it in quotes with at least one newline or use JSON: ['step']")
+        raise ValueError(
+            "--steps must be newline-separated or a JSON array; for a single step wrap it in quotes with at least one newline or use JSON: ['step']"
+        )
     return _parse_steps(raw)
 
 
