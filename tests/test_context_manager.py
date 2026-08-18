@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -173,75 +172,6 @@ class TestAddAsync:
         assert mgr.stats.active_messages_count == 5
 
 
-# ─── _get_tiktoken_encoding ───────────────────────────────────────────────────
-
-
-@pytest.mark.skip(reason="_get_tiktoken_encoding not implemented")
-class TestTiktokenEncoding:
-    """Cover lines 200-230 (tiktoken fallback paths)."""
-
-    def test_encoding_with_tiktoken_available(self) -> None:
-        """When tiktoken available, uses it."""
-        mgr = ContextWindowManager(model="gpt-4")
-        mock_encoding = MagicMock()
-        mock_encoding.encode.return_value = [1, 2, 3, 4, 5]
-        mock_tiktoken = MagicMock()
-        mock_tiktoken.get_encoding.return_value = mock_encoding
-        with patch.dict("sys.modules", {"tiktoken": mock_tiktoken}):
-            # Clear any cached result
-            result = mgr._get_tiktoken_encoding()
-            assert result is not None
-            enc, name = result
-            assert name == "cl100k_base"
-
-    def test_encoding_import_error_fallback(self) -> None:
-        """ImportError in get_encoding → returns None, falls back to char estimation."""
-        mgr = ContextWindowManager(model="unknown-model")
-        mock_tiktoken = MagicMock()
-        mock_tiktoken.get_encoding.side_effect = ImportError("No module named 'tiktoken'")
-        with patch.dict("sys.modules", {"tiktoken": mock_tiktoken}):
-            result = mgr._get_tiktoken_encoding()
-            assert result is None
-
-    def test_encoding_generic_exception_fallback(self) -> None:
-        """Generic exception in tiktoken → returns None."""
-        mgr = ContextWindowManager(model="some-model")
-        mock_tiktoken = MagicMock()
-        mock_tiktoken.get_encoding.side_effect = RuntimeError("encoding error")
-        with patch.dict("sys.modules", {"tiktoken": mock_tiktoken}):
-            result = mgr._get_tiktoken_encoding()
-            assert result is None
-
-
-# ─── _contains_non_latin ───────────────────────────────────────────────────────
-
-
-@pytest.mark.skip(reason="_contains_non_latin not implemented")
-class TestContainsNonLatin:
-    """Cover lines 238-242."""
-
-    def test_english_returns_false(self) -> None:
-        mgr = ContextWindowManager()
-        assert mgr._contains_non_latin("Hello world, this is English.") is False
-
-    def test_cjk_returns_true(self) -> None:
-        mgr = ContextWindowManager()
-        assert mgr._contains_non_latin("你好世界") is True
-        assert mgr._contains_non_latin("今日は") is True
-
-    def test_arabic_returns_true(self) -> None:
-        mgr = ContextWindowManager()
-        assert mgr._contains_non_latin("مرحبا") is True
-
-    def test_cyrillic_returns_true(self) -> None:
-        mgr = ContextWindowManager()
-        assert mgr._contains_non_latin("Привет") is True
-
-    def test_greek_returns_true(self) -> None:
-        mgr = ContextWindowManager()
-        assert mgr._contains_non_latin("Γειά σου") is True
-
-
 # ─── _estimate_tokens ─────────────────────────────────────────────────────────
 
 
@@ -344,34 +274,6 @@ class TestValidateCoherence:
             mgr.add("user", f"{big}{i}", importance=0.1, priority_tier=3)
         # Tier 0 is protected, so grounding should remain
         assert any(m.is_grounding and not m.is_pruned for m in mgr.messages)
-
-
-# ─── prune_async ─────────────────────────────────────────────────────────────
-
-
-@pytest.mark.skip(reason="prune_async not implemented")
-class TestPruneAsync:
-    """prune_async with asyncio.Lock."""
-
-    @pytest.mark.asyncio
-    async def test_prune_async_returns_count(self) -> None:
-        mgr = ContextWindowManager(max_tokens=10_000)
-        big = "x" * 2000
-        mgr.add("user", "keep", importance=0.9, is_grounding=True, priority_tier=0)
-        for i in range(30):
-            mgr.add("user", f"{big}{i}", importance=0.1, priority_tier=3)
-        pruned_count = await mgr.prune_async()
-        assert pruned_count >= 0
-
-    @pytest.mark.asyncio
-    async def test_prune_async_concurrent(self) -> None:
-        """Concurrent prunes don't crash."""
-        mgr = ContextWindowManager(max_tokens=5_000)
-        big = "x" * 2000
-        for i in range(50):
-            mgr.add("user", f"{big}{i}", importance=0.1, priority_tier=3)
-        await asyncio.gather(mgr.prune_async(), mgr.prune_async())
-        assert mgr.tokens_remaining() >= 0
 
 
 # ─── mark_below_threshold ─────────────────────────────────────────────────────
