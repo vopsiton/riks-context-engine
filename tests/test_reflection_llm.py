@@ -116,7 +116,10 @@ CONVERSATION_PLANNING = [
         "role": "assistant",
         "content": "The migration missed step 3 (index rebuild) and left a dependency broken on the orders table.",
     },
-    {"role": "user", "content": "Roll back and redo it: backup first, then migrate, then rebuild indexes"},
+    {
+        "role": "user",
+        "content": "Roll back and redo it: backup first, then migrate, then rebuild indexes",
+    },
 ]
 
 CONVERSATION_SECURITY = [
@@ -162,7 +165,7 @@ LLM_RESPONSE_PLANNING = json.dumps(
         "went_well": ["A rollback plan was agreed on with the correct step order."],
         "went_wrong": [
             "The database migration was run before the backup, in the wrong order.",
-            "Step 3 (index rebuild) was missed, breaking a dependency on the orders table."
+            "Step 3 (index rebuild) was missed, breaking a dependency on the orders table.",
         ],
         "missing_info": ["The full migration checklist was not available to the agent."],
         "lessons": [
@@ -326,9 +329,7 @@ class TestReflectionFallback:
         assert report.went_well or report.went_wrong or report.missing_info
 
     def test_fallback_content_based_summary(self, no_ollama, tmp_path):
-        analyzer = ReflectionAnalyzer(
-            storage_path=str(tmp_path / "lessons.json"), fallback_top_n=3
-        )
+        analyzer = ReflectionAnalyzer(storage_path=str(tmp_path / "lessons.json"), fallback_top_n=3)
         report = analyzer.analyze("int-fb", CONVERSATION_PLANNING)
         assert report.source == "fallback"
         # The important failure messages are surfaced, not just metadata
@@ -347,7 +348,9 @@ class TestReflectionFallback:
         assert report.source == "fallback"
         # Even without keyword signals, the top messages are summarized
         assert len(report.lessons) >= 1
-        assert any("Paris" in lsn.observation or "France" in lsn.observation for lsn in report.lessons)
+        assert any(
+            "Paris" in lsn.observation or "France" in lsn.observation for lsn in report.lessons
+        )
 
     def test_empty_conversation(self, no_ollama):
         analyzer = ReflectionAnalyzer()

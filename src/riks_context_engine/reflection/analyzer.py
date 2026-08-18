@@ -232,7 +232,9 @@ class ReflectionAnalyzer:
     ):
         self.semantic_memory = semantic_memory
         self.llm_model = llm_model or os.environ.get("OLLAMA_MODEL") or self.DEFAULT_MODEL
-        self.llm_base_url = llm_base_url or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434"
+        self.llm_base_url = (
+            llm_base_url or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434"
+        )
         self.llm_timeout = llm_timeout
         self.fallback_top_n = max(1, int(fallback_top_n))
         self._lessons: dict[str, Lesson] = {}
@@ -320,9 +322,7 @@ class ReflectionAnalyzer:
         # so downstream behavior is backward compatible)
         for lesson in report.lessons:
             self._add_lesson(lesson)
-            self._mistake_counts[lesson.category] = (
-                self._mistake_counts.get(lesson.category, 0) + 1
-            )
+            self._mistake_counts[lesson.category] = self._mistake_counts.get(lesson.category, 0) + 1
 
         return report
 
@@ -431,13 +431,35 @@ class ReflectionAnalyzer:
     # -- Fallback path ---------------------------------------------------
 
     _SUCCESS_KEYWORDS = [
-        "success", "successfully", "works", "worked", "solved", "fixed",
-        "resolved", "completed", "great", "done",
+        "success",
+        "successfully",
+        "works",
+        "worked",
+        "solved",
+        "fixed",
+        "resolved",
+        "completed",
+        "great",
+        "done",
     ]
     _FAILURE_KEYWORDS = [
-        "error", "failed", "failure", "wrong", "bug", "issue", "problem",
-        "exception", "timeout", "crash", "broke", "broken", "rejected",
-        "denied", "invalid", "mismatch", "conflict",
+        "error",
+        "failed",
+        "failure",
+        "wrong",
+        "bug",
+        "issue",
+        "problem",
+        "exception",
+        "timeout",
+        "crash",
+        "broke",
+        "broken",
+        "rejected",
+        "denied",
+        "invalid",
+        "mismatch",
+        "conflict",
     ]
     _MISSING_KEYWORDS = ["didn't know", "i don't know", "missing", "unclear", "unknown", "assumed"]
 
@@ -477,7 +499,11 @@ class ReflectionAnalyzer:
 
         # Most important N messages form the basis of the fallback summary
         ranked = sorted(
-            (str(m.get("content", "")).strip() for m in messages if str(m.get("content", "")).strip()),
+            (
+                str(m.get("content", "")).strip()
+                for m in messages
+                if str(m.get("content", "")).strip()
+            ),
             key=lambda c: -self._message_importance(c),
         )
         top_messages = ranked[: self.fallback_top_n]
