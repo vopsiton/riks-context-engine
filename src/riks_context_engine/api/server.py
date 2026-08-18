@@ -102,13 +102,44 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-# ─── Rate Limiting ─────────────────────────────────────────────────────────────
-_RATE_LIMIT_REQUESTS = int(os.environ.get("RATE_LIMIT_REQUESTS", "100"))
-_RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))  # seconds
+# ─── Rate Limiting (#99) ──────────────────────────────────────────────────────
 
-# Per-IP request tracking: {ip: [(timestamp, count)]}
-_ip_request_log: dict[str, list[tuple[float, int]]] = defaultdict(list)
-_ip_lock = Lock()
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Parse a boolean environment variable."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+class RateLimitConfig:
+    """Sliding-window rate limit settings.
+
+    Config schema (env vars, loaded at import time):
+
+    - ``RATE_LIMIT_ENABLED`` (bool, default ``false``) — master switch.
+    - ``RATE_LIMIT_MODE`` (``"ip"`` | ``"user"``, default ``"ip"``) — key
+      requests by client IP or by ``X-Tenant-Id`` / API-key identity.
+    - ``RATE_LIMIT_REQUESTS`` (int, default ``100``) — ``max_requests``.
+    - ``RATE_LIMIT_WINDOW`` (int seconds, default ``60``) — ``window_seconds``.
+    """
+
+    def __init__(self) -> None:
+        self.enabled: bool = _env_bool("RATE_LIMIT_ENABLED", False)
+        self.mode: str = os.environ.get("RATE_LIMIT_MODE", "ip").strip().lower()
+        if self.mode not in {"ip", "user"}:
+            self.mode = "ip"
+        self.max_requests: int = int(os.environ.get("RATE_LIMIT_REQUESTS", "100"))
+        self.window_seconds: int = int(os.environ.get("RATE_LIMIT_WINDOW", "60"))
+
+
+_RATE_LIMIT_REQUESTS = 100  # kept for backwards compatibility
+_RATE_LIMIT_WINDOW = 60  # kept for backwards compatibility
+
+# Sliding-window request tracking: {key: [timestamps within window]}
+_rate_limit_log: dict[str, list[float]] = defaultdict(list)
+_rate_limit_lock = Lock()
 
 
 def _get_client_ip(request: Request) -> str:
@@ -119,66 +150,89 @@ def _get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _check_rate_limit(ip: str) -> tuple[bool, int, int]:
-    """Check if IP is within rate limit.
+def _rate_limit_key(request: Request, mode: str) -> str:
+    """Build the rate-limit key for a request (per-IP or per-user)."""
+    if mode == "user":
+        tenant = request.headers.get(TENANT_HEADER, "").strip()
+        if tenant:
+            return f"user:{tenant}"
+    return f"ip:{_get_client_ip(request)}"
 
+
+def _check_rate_limit(
+    ip: str, *, max_requests: int = _RATE_LIMIT_REQUESTS, window: int = _RATE_LIMIT_WINDOW
+) -> tuple[bool, int, int]:
+    """Check a sliding window for ``ip`` without recording the request.
 
     Returns (allowed, remaining, reset_seconds).
     """
     now = time.time()
-    window_start = now - _RATE_LIMIT_WINDOW
+    window_start = now - window
 
-    with _ip_lock:
-        # Prune old entries
-        _ip_request_log[ip] = [(ts, cnt) for ts, cnt in _ip_request_log[ip] if ts > window_start]
-        entries = _ip_request_log[ip]
+    with _rate_limit_lock:
+        entries = [ts for ts in _rate_limit_log[ip] if ts > window_start]
+        _rate_limit_log[ip] = entries
 
-        total = sum(cnt for _, cnt in entries)
-        remaining = max(0, _RATE_LIMIT_REQUESTS - total)
+        total = len(entries)
+        remaining = max(0, max_requests - total)
 
         if remaining == 0:
-            oldest = min(ts for ts, _ in entries) if entries else now
-            reset_seconds = int(oldest + _RATE_LIMIT_WINDOW - now)
-            return False, 0, max(1, reset_seconds)
+            oldest = min(entries) if entries else now
+            reset_seconds = oldest + window - now
+            return False, 0, max(1, int(reset_seconds) or 1)
 
-        return True, remaining - 1, _RATE_LIMIT_WINDOW
+        return True, remaining - 1, window
 
 
 def _record_request(ip: str) -> None:
     """Record a request for rate limiting."""
     now = time.time()
-    with _ip_lock:
-        _ip_request_log[ip].append((now, 1))
+    with _rate_limit_lock:
+        _rate_limit_log[ip].append(now)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """FastAPI middleware for per-IP rate limiting."""
+    """FastAPI middleware for sliding-window rate limiting.
+
+    Enabled only when ``RATE_LIMIT_ENABLED`` is truthy. On limit overflow the
+    response is ``429`` with ``Retry-After``; on allowed responses the
+    ``X-RateLimit-Limit`` / ``X-RateLimit-Remaining`` headers are set.
+    """
+
+    def __init__(self, app: Any, config: RateLimitConfig | None = None) -> None:
+        super().__init__(app)
+        self._config = config or RateLimitConfig()
 
     async def dispatch(self, request: Request, call_next):
+        cfg = self._config
+        if not cfg.enabled:
+            return await call_next(request)
+
         # Skip rate limiting for health endpoint
         if request.url.path == "/health":
             return await call_next(request)
 
-        ip = _get_client_ip(request)
-        allowed, remaining, reset = _check_rate_limit(ip)
+        key = _rate_limit_key(request, cfg.mode)
+        allowed, remaining, reset = _check_rate_limit(
+            key, max_requests=cfg.max_requests, window=cfg.window_seconds
+        )
 
         if not allowed:
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Too Many Requests"},
                 headers={
-                    "X-RateLimit-Limit": str(_RATE_LIMIT_REQUESTS),
+                    "X-RateLimit-Limit": str(cfg.max_requests),
                     "X-RateLimit-Remaining": "0",
                     "X-RateLimit-Reset": str(reset),
                     "Retry-After": str(reset),
                 },
             )
 
-        _record_request(ip)
+        _record_request(key)
         response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(_RATE_LIMIT_REQUESTS)
+        response.headers["X-RateLimit-Limit"] = str(cfg.max_requests)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
-        response.headers["X-RateLimit-Reset"] = str(reset)
         return response
 
 
@@ -570,7 +624,8 @@ app.add_middleware(
     allow_headers=_cors["allow_headers"],
 )
 
-app.add_middleware(RateLimitMiddleware)
+_rate_limit_config = RateLimitConfig()
+app.add_middleware(RateLimitMiddleware, config=_rate_limit_config)
 app.add_middleware(APIKeyAuthMiddleware)
 # Tenant isolation MUST run after API-key auth: auth first, then scope.
 app.add_middleware(TenantAuthMiddleware)
