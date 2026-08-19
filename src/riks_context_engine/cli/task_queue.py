@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any
 
 
-def task_queue_path() -> str:
-    data_dir = os.environ.get("RIKS_DATA_DIR", "data")
+def task_queue_path(tenant_id: str | None = None, data_dir: str | None = None) -> str:
+    data_dir = data_dir or os.environ.get("RIKS_DATA_DIR", "data")
     base = os.path.join(data_dir, os.environ.get("RIKS_TASKS_FILE", "tasks.json"))
-    tenant = os.environ.get("RIKS_TENANT_ID", "").strip()
+    tenant = tenant_id or os.environ.get("RIKS_TENANT_ID", "").strip()
     if tenant:
         base = os.path.join(data_dir, "tenants", tenant, "tasks.json")
     return base

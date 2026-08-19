@@ -18,6 +18,7 @@ import os
 import sys
 from typing import Any
 
+from ..tools.executor import ToolExecutionError
 from .handlers import TenantIsolationError, create_handler
 from .protocol import (
     ERR_INTERNAL_ERROR,
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Protocol version as defined in MCP spec
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "riks-context-engine", "version": "0.2.0"}
+SERVER_INFO = {"name": "riks-context-engine", "version": "0.3.0"}
 
 # Supported JSON-RPC methods
 MCP_METHODS = {
@@ -110,6 +111,8 @@ class MCPServer:
         try:
             result = handler_method(tool_args)
         except TenantIsolationError as exc:
+            raise JsonRpcError(ERR_INVALID_PARAMS, str(exc)) from exc
+        except ToolExecutionError as exc:
             raise JsonRpcError(ERR_INVALID_PARAMS, str(exc)) from exc
 
         return {

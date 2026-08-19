@@ -179,6 +179,32 @@ TOOL_SCHEMAS = {
             "additionalProperties": False,
         },
     },
+    "task_execute": {
+        "name": "task_execute",
+        "description": "Execute a goal via the tool execution engine with mandatory timeout.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tenant_id": {
+                    "type": "string",
+                    "description": "Tenant id (X-Tenant-Id); required for isolation",
+                },
+                "goal": {
+                    "type": "string",
+                    "description": "Goal string, e.g. 'echo: hello' (max 2048 chars)",
+                    "maxLength": 2048,
+                },
+                "timeout": {
+                    "type": "number",
+                    "description": "Timeout in seconds (default 30, max 120)",
+                    "default": 30,
+                    "minimum": 1,
+                    "maximum": 120,
+                },
+            },
+            "required": ["tenant_id", "goal"],
+        },
+    },
     "health_check": {
         "name": "health_check",
         "description": "Check if the MCP server is healthy and responsive.",

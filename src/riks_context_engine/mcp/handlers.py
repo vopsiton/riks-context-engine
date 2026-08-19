@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from ..cli.task_queue import TaskQueue, task_queue_path
 from ..context.manager import ContextWindowManager
 from ..memory import EpisodicMemory, ProceduralMemory, SemanticMemory
 from ..multi_tenant import (
@@ -14,6 +15,11 @@ from ..multi_tenant import (
     TenantMemoryRegistry,
     TenantValidationError,
     validate_tenant_id,
+)
+from ..tools.executor import (
+    ToolExecutionError,
+    build_default_registry,
+    execute_goal,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +56,7 @@ class ToolHandler:
         self._context = context_manager
         self._tenant_registry = tenant_registry or TenantContextRegistry()
         self._memory_registry = TenantMemoryRegistry(data_dir=self.data_dir)
+        self._tool_registry: Any = None
 
     # -- Lazy initialisers ---------------------------------------------------
 
@@ -303,10 +310,70 @@ class ToolHandler:
             ),
         }
 
+    def task_execute(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Execute a goal via the tool execution engine.
+
+        Timeout is mandatory and capped at 120s. On timeout, returns a normal
+        response with ``status="timeout"`` — never raises, so the stdio loop
+        stays alive.
+
+        Known limitation: on timeout the worker thread is left running as a
+        daemon (orphan). Real cancellation is tracked in a follow-up issue.
+        """
+        try:
+            tenant_id = validate_tenant_id(params.get("tenant_id"))
+        except TenantValidationError as exc:
+            raise TenantIsolationError(str(exc)) from exc
+
+        goal = params.get("goal", "")
+        if not isinstance(goal, str) or not goal.strip():
+            raise TenantIsolationError("goal must be a non-empty string")
+
+        raw_timeout = params.get("timeout")
+        if raw_timeout is None:
+            effective_timeout = 30.0
+        else:
+            effective_timeout = float(raw_timeout)
+            if effective_timeout < 1 or effective_timeout > 120:
+                raise TenantIsolationError("timeout must be between 1 and 120 seconds")
+
+        if self._tool_registry is None:
+            self._tool_registry = build_default_registry()
+
+        queue = TaskQueue(path=task_queue_path(tenant_id=tenant_id, data_dir=self.data_dir))
+        task = queue.add(goal)
+        task.owner_tenant = tenant_id
+        queue.mark(task.id, "running")
+
+        try:
+            result = execute_goal(goal, self._tool_registry, timeout=effective_timeout)
+        except ToolExecutionError as exc:
+            queue.mark(task.id, "failed", result=str(exc))
+            raise TenantIsolationError(str(exc)) from exc
+
+        if result.timed_out:
+            queue.mark(task.id, "timeout")
+            return {
+                "status": "timeout",
+                "goal": goal,
+                "timeout_seconds": effective_timeout,
+                "result": None,
+            }
+
+        queue.mark(task.id, "done", result=result.result)
+        name = goal.partition(":")[0].strip() if ":" in goal else "echo"
+        return {
+            "status": "done",
+            "tool": name,
+            "result": result.result,
+        }
+
     def health_check(self, params: dict[str, Any]) -> dict[str, Any]:
         """Return server health status."""
         del params
-        return {"status": "ok", "version": "0.2.0"}
+        from .server import SERVER_INFO
+
+        return {"status": "ok", "version": SERVER_INFO["version"]}
 
 
 def create_handler(data_dir: str | None = None) -> ToolHandler:

@@ -151,7 +151,7 @@ class TestMCPServer:
     def test_health_check(self, server: MCPServer) -> None:
         result = server.handler.health_check({})
         assert result["status"] == "ok"
-        assert result["version"] == "0.2.0"
+        assert result["version"] == "0.3.0"
 
     def test_unknown_method(self, server: MCPServer) -> None:
         request = {"jsonrpc": "2.0", "method": "nonexistent", "id": 1}
