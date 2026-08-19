@@ -2,9 +2,8 @@
 
 #124: `riks memory add/query` (turn 1) and `riks context stats/prune/clear`,
 `riks task <goal>`, `riks reflect --session <id>` (turn 2) are implemented
-against the real stores. `task --execute` does not execute this turn (real
-execution is the next turn after the task model is clarified); it reports
-that honestly.
+against the real stores. `riks task <goal>` queues the goal; real execution
+is intentionally out of scope until the task model is clarified.
 """
 
 from __future__ import annotations
@@ -308,8 +307,6 @@ def cmd_task(args: argparse.Namespace) -> int:
     queue = TaskQueue()
     task = queue.add(args.goal.strip())
     print(f"task queued: {task.id} ({task.status})")
-    if args.execute:
-        print("note: task queued (not yet executed) — real execution lands in a future release")
     return 0
 
 
@@ -406,9 +403,6 @@ def _build_parser() -> argparse.ArgumentParser:
     # Task commands
     task = sub.add_parser("task", help="Task operations")
     task.add_argument("goal", type=str, nargs="?", default=None, help="Goal to queue")
-    task.add_argument(
-        "--execute", action="store_true", help="Reserved: real execution lands next turn"
-    )
     task.add_argument("--list", action="store_true", help="List queued tasks")
 
     # Reflection commands
@@ -455,6 +449,10 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 1
 
+    if extras:
+        print(f"error: unexpected argument(s): {' '.join(extras)}", file=sys.stderr)
+        return 2
+
     if args.command == "context":
         if args.action == "stats":
             return cmd_context_stats()
@@ -468,10 +466,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "reflect":
         return cmd_reflect(args)
-
-    if extras:
-        print(f"error: unexpected argument(s): {' '.join(extras)}", file=sys.stderr)
-        return 2
 
     print(f"not implemented yet: riks {args.command} {getattr(args, 'action', '') or ''}".strip())
     return 1

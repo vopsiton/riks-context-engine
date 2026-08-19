@@ -147,14 +147,19 @@ class TestTask:
         assert data["tasks"][0]["goal"] == "deploy staging"
         assert data["tasks"][0]["status"] == "queued"
 
-    def test_task_execute_is_honest(self, isolated_data: Path, capsys: pytest.CaptureFixture[str]):
+    def test_task_execute_flag_removed(
+        self, isolated_data: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        # #124: `--execute` was a no-op (never executed) and was removed; the
+        # task model must be clarified before real execution lands. The CLI
+        # is fail-closed about unknown options: it must refuse (exit 2), not
+        # silently queue and exit 0.
         rc = main(["task", "build pipeline", "--execute"])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "task queued:" in out
-        assert "not yet executed" in out
-        data = json.loads((isolated_data / "tasks.json").read_text())
-        assert data["tasks"][0]["status"] == "queued"  # NOT executed
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "unexpected argument(s)" in err
+        assert "--execute" in err
+        assert not (isolated_data / "tasks.json").exists()
 
     def test_task_list(self, isolated_data: Path, capsys: pytest.CaptureFixture[str]):
         main(["task", "goal one"])
