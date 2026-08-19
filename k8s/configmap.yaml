@@ -1,0 +1,24 @@
+# ConfigMap for Rik's Context Engine (#111)
+#
+# Non-secret environment variables. Secrets (RIKS_API_KEY, etc.) live in a
+# separate Kubernetes Secret that is created out-of-band (see README.md and
+# secret.example.yaml). Do NOT commit real secret values.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: riks-context-engine-config
+  namespace: riks-context-engine
+  labels:
+    app.kubernetes.io/name: riks-context-engine
+    app.kubernetes.io/part-of: riks
+data:
+  # Data directory (mounted volume in deployment.yaml).
+  RIKS_DATA_DIR: "/data"
+  # UI path (served by FastAPI root endpoint when the UI is not deployed).
+  UI_PATH: "/ui/index.html"
+  # CORS allow-list (comma-separated origins). Override via Secret if the
+  # allow-list must not be in version control.
+  ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:8080"
+  # Rate limiting (defaults are applied by RateLimitConfig when unset).
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  RATE_LIMIT_WINDOW_SECONDS: "60"

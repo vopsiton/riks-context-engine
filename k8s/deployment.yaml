@@ -1,0 +1,101 @@
+# Deployment for Rik's Context Engine (#111)
+#
+# Image: ghcr.io/vopsiton/riks-context-engine (built by .github/workflows/cd.yml).
+# Set the image tag via --set or a CI/CD step:
+#   kubectl set image deployment/riks-context-engine \
+#     riks-context-engine=ghcr.io/vopsiton/riks-context-engine:<tag> \
+#     -n riks-context-engine
+#
+# Secrets are injected from the `riks-context-engine` Secret (see
+# secret.example.yaml for the template; create the real Secret out-of-band).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: riks-context-engine
+  namespace: riks-context-engine
+  labels:
+    app.kubernetes.io/name: riks-context-engine
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: riks
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: riks-context-engine
+      app.kubernetes.io/component: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: riks-context-engine
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: riks
+      annotations:
+        # Bump to roll pods when the Secret changes (K8s does not auto-roll
+        # on Secret changes; this annotation is a cheap, manual trigger).
+        checksum/secret: "placeholder"
+    spec:
+      containers:
+        - name: riks-context-engine
+          image: ghcr.io/vopsiton/riks-context-engine:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: riks-context-engine-config
+            - secretRef:
+                name: riks-context-engine
+          # Resource limits/requests (criterion 3): requests are the
+          # guaranteed minimum (scheduling), limits are the hard cap
+          # (OOMKill above).
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          # Liveness: the pod is unresponsive / wedged → restart.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Readiness: the pod is not ready to take traffic → remove from
+          # Service endpoints until it recovers.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Startup: slow-boot tolerance (import + store init) without
+          # tripping liveness.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      # Data volume (RIKS_DATA_DIR=/data). Replace with a PVC for persistent
+      # memory across pod restarts; emptyDir is the safe default for a
+      # stateless-first deployment.
+      volumes:
+        - name: data
+          emptyDir: {}

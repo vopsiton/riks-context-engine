@@ -1,0 +1,46 @@
+# Horizontal Pod Autoscaler for Rik's Context Engine (#111)
+#
+# Scales the Deployment between minReplicas=2 and maxReplicas=6 based on
+# CPU utilization (target 70%). Memory-based scaling is NOT used here:
+# K8s HPA v2 supports only CPU and memory *utilization* (against the
+# container's `requests`), and memory utilization on this workload is
+# noisy (Python GC + tiktoken + SQLite WAL). If memory-driven scaling is
+# needed later, use an external metric (e.g. requests/second via
+# prometheus-adapter) instead.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: riks-context-engine
+  namespace: riks-context-engine
+  labels:
+    app.kubernetes.io/name: riks-context-engine
+    app.kubernetes.io/part-of: riks
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: riks-context-engine
+  minReplicas: 2
+  maxReplicas: 6
+  behavior:
+    scaleDown:
+      # Do not scale down faster than one replica per 5 minutes (avoids
+      # flapping under bursty traffic).
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
