@@ -1,13 +1,8 @@
 """Episodic memory - session-level, short-term observations."""
 
-import json
-import os
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-
-from filelock import FileLock
 
 
 @dataclass
@@ -33,41 +28,37 @@ class EpisodicMemory:
 
     def __init__(self, storage_path: str | None = None):
         self.storage_path = storage_path or "data/episodic.json"
-        self._is_memory = self.storage_path == ":memory:"
         self._entries: dict[str, EpisodicEntry] = {}
-        if not self._is_memory:
-            self._lock = FileLock(f"{self.storage_path}.lock", timeout=10)
         self._load()
 
     def _load(self) -> None:
         """Load entries from disk if available."""
-        if self._is_memory:
-            return
         path = Path(self.storage_path)
-        with self._lock:
-            if path.exists():
-                try:
-                    data = json.loads(path.read_text())
-                    for d in data.values():
-                        ts = d["timestamp"]
-                        if isinstance(ts, str):
-                            ts = datetime.fromisoformat(ts)
-                        self._entries[d["id"]] = EpisodicEntry(
-                            id=d["id"],
-                            timestamp=ts,
-                            content=d["content"],
-                            importance=d.get("importance", 0.5),
-                            embedding=d.get("embedding"),
-                            tags=d.get("tags"),
-                        )
-                except (json.JSONDecodeError, KeyError, ValueError):
-                    pass  # Start fresh on corruption
+        if path.exists():
+            import json
+
+            try:
+                data = json.loads(path.read_text())
+                for d in data.values():
+                    ts = d["timestamp"]
+                    if isinstance(ts, str):
+                        ts = datetime.fromisoformat(ts)
+                    self._entries[d["id"]] = EpisodicEntry(
+                        id=d["id"],
+                        timestamp=ts,
+                        content=d["content"],
+                        importance=d.get("importance", 0.5),
+                        embedding=d.get("embedding"),
+                        tags=d.get("tags"),
+                    )
+            except (json.JSONDecodeError, KeyError, ValueError):
+                pass  # Start fresh on corruption
 
     def _save(self) -> None:
         """Persist entries to disk."""
-        if self._is_memory:
-            return
         Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
+        import json
+
         data = {
             eid: {
                 "id": e.id,
@@ -79,21 +70,7 @@ class EpisodicMemory:
             }
             for eid, e in self._entries.items()
         }
-        with self._lock:
-            fd, tmp = tempfile.mkstemp(
-                dir=str(Path(self.storage_path).parent), suffix=".tmp"
-            )
-            try:
-                os.write(fd, json.dumps(data, indent=2).encode())
-                os.close(fd)
-                fd = -1
-                os.replace(tmp, self.storage_path)
-            except BaseException:
-                if fd >= 0:
-                    os.close(fd)
-                if os.path.exists(tmp):
-                    os.unlink(tmp)
-                raise
+        Path(self.storage_path).write_text(json.dumps(data, indent=2))
 
     def add(
         self,

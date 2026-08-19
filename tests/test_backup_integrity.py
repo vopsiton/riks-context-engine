@@ -99,6 +99,7 @@ class TestAtomicSQLiteBackup:
 
         db_path = str(data_dir / "semantic.db")
         stop = threading.Event()
+        errors: list[str] = []
 
         def writer() -> None:
             conn = sqlite3.connect(db_path)

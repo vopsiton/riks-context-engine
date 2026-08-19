@@ -54,8 +54,6 @@ class SemanticMemory:
     def _init_db(self) -> None:
         """Initialize the SQLite schema."""
         with self._conn() as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS semantic_entries (
                     id TEXT PRIMARY KEY,
