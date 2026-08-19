@@ -80,9 +80,7 @@ class EpisodicMemory:
             for eid, e in self._entries.items()
         }
         with self._lock:
-            fd, tmp = tempfile.mkstemp(
-                dir=str(Path(self.storage_path).parent), suffix=".tmp"
-            )
+            fd, tmp = tempfile.mkstemp(dir=str(Path(self.storage_path).parent), suffix=".tmp")
             try:
                 os.write(fd, json.dumps(data, indent=2).encode())
                 os.close(fd)
