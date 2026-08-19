@@ -634,18 +634,54 @@ app.add_middleware(TenantAuthMiddleware)
 app.add_api_websocket_route("/ws/v1/context/stream", websocket_context_stream)
 
 
-@app.get("/health")
+class HealthResponse(BaseModel):
+    status: str
+
+
+class ModelsResponse(BaseModel):
+    models: list[str]
+
+
+class ContextMessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    timestamp: str
+    importance: float
+    tokens: int
+
+
+class ContextAddResponse(BaseModel):
+    message_id: str
+    role: str
+    tokens: int
+    status: str
+
+
+class ContextSummaryResponse(BaseModel):
+    current_tokens: int
+    max_tokens: int
+    messages_count: int
+    active_messages_count: int
+    pruning_count: int
+    last_prune_timestamp: str | None
+
+
+@app.get("/health", response_model=HealthResponse, tags=["health"])
 def health() -> dict[str, str]:
+    """Liveness probe."""
     return {"status": "ok"}
 
 
-@app.get("/models")
+@app.get("/models", response_model=ModelsResponse, tags=["models"])
 def list_models() -> dict[str, list[str]]:
+    """List available chat models."""
     return {"models": _MODELS}
 
 
-@app.post("/api/chat", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse, tags=["chat"])
 def chat(req: ChatRequest) -> ChatResponse:
+    """Send a chat message (echo mode until the context engine is wired in)."""
     model = req.model or "gemma4-31b-it"
     if model not in _MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
@@ -657,10 +693,18 @@ def chat(req: ChatRequest) -> ChatResponse:
     )
 
 
-@app.get("/")
-def root() -> FileResponse:
-    ui_path = os.environ.get("UI_PATH", "ui/index.html")
-    return FileResponse(ui_path)
+@app.get("/", include_in_schema=False)
+def root() -> FileResponse | MemoryExportResponse:
+    """UI index, or a memory export when the UI is not deployed.
+
+    Excluded from the OpenAPI spec (#123): the canonical export endpoint is
+    GET /api/v1/memory/export; this alias preserves legacy behavior.
+    """
+    if _episodic_memory is not None and not os.path.exists(
+        os.environ.get("UI_PATH", "ui/index.html")
+    ):
+        return _export_memory(None, "json", None, None, None)
+    return FileResponse(os.environ.get("UI_PATH", "ui/index.html"))
 
 
 # ─── Context Endpoints (tenant-scoped, #102) ──────────────────────────────────
@@ -672,9 +716,13 @@ class ContextAddRequest(BaseModel):
     importance: float = Field(0.5, ge=0.0, le=1.0)
 
 
-@app.post("/api/v1/context/messages")
+@app.post(
+    "/api/v1/context/messages",
+    response_model=ContextAddResponse,
+    tags=["context"],
+)
 def context_add_message(req: ContextAddRequest, request: Request) -> dict[str, Any]:
-    """Append a message to the caller's tenant context window."""
+    """Append a message to the caller's tenant context window (tenant-scoped)."""
     tenant_id: str = request.state.tenant_id  # set by TenantAuthMiddleware
     if req.role not in ("user", "assistant", "system"):
         raise HTTPException(status_code=400, detail="Invalid role")
@@ -684,7 +732,11 @@ def context_add_message(req: ContextAddRequest, request: Request) -> dict[str, A
     return {"message_id": msg.id, "role": msg.role, "tokens": msg.tokens, "status": "added"}
 
 
-@app.get("/api/v1/context/messages")
+@app.get(
+    "/api/v1/context/messages",
+    response_model=list[ContextMessageResponse],
+    tags=["context"],
+)
 def context_list_messages(request: Request) -> list[dict[str, Any]]:
     """List the caller's tenant context window. Isolated per tenant."""
     tenant_id: str = request.state.tenant_id
@@ -702,7 +754,11 @@ def context_list_messages(request: Request) -> list[dict[str, Any]]:
     ]
 
 
-@app.get("/api/v1/context/summary")
+@app.get(
+    "/api/v1/context/summary",
+    response_model=ContextSummaryResponse,
+    tags=["context"],
+)
 def context_summary(request: Request) -> dict[str, Any]:
     """Context window stats for the caller's tenant only."""
     tenant_id: str = request.state.tenant_id
@@ -740,29 +796,15 @@ class MemoryImportResponse(BaseModel):
     schema_version: str
 
 
-@app.get("/api/v1/memory/export", response_model=MemoryExportResponse)
-def export_memory_api(
-    types: Annotated[
-        str | None,
-        Query(description="Comma-separated types: episodic,semantic,procedural"),
-    ] = None,
-    format: Annotated[
-        Literal["json", "yaml"] | None,
-        Query(description="Output format"),
-    ] = None,
-    date_from: datetime | None = None,
-    date_to: datetime | None = None,
-    tags: Annotated[
-        str | None,
-        Query(description="Comma-separated tags filter"),
-    ] = None,
+def _export_memory(
+    types: str | None,
+    format: Literal["json", "yaml"],
+    date_from: datetime | None,
+    date_to: datetime | None,
+    tags: list[str] | None,
 ) -> MemoryExportResponse:
-    """Export memory tiers as JSON or YAML."""
-    if format is None:
-        format = "json"
-
+    """Shared export logic (canonical endpoint + GET / alias)."""
     include_types = [t.strip() for t in types.split(",")] if types else None
-    tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
     manifest = export_memory(
         episodic_memory=_episodic_memory,
@@ -771,7 +813,7 @@ def export_memory_api(
         include_types=include_types,
         date_from=date_from,
         date_to=date_to,
-        tags=tag_list,
+        tags=tags,
     )
 
     serialized = dump_manifest(manifest, format)
@@ -789,9 +831,33 @@ def export_memory_api(
     )
 
 
-@app.post("/api/v1/memory/import", response_model=MemoryImportResponse)
+@app.get("/api/v1/memory/export", response_model=MemoryExportResponse, tags=["memory"])
+def export_memory_api(
+    types: Annotated[
+        str | None,
+        Query(description="Comma-separated types: episodic,semantic,procedural"),
+    ] = None,
+    format: Annotated[
+        Literal["json", "yaml"] | None,
+        Query(description="Output format"),
+    ] = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    tags: Annotated[
+        str | None,
+        Query(description="Comma-separated tags filter"),
+    ] = None,
+) -> MemoryExportResponse:
+    """Export memory tiers as JSON or YAML (tenant-scoped via X-Tenant-Id)."""
+    if format is None:
+        format = "json"
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    return _export_memory(types, format, date_from, date_to, tag_list)
+
+
+@app.post("/api/v1/memory/import", response_model=MemoryImportResponse, tags=["memory"])
 def import_memory_api(req: MemoryImportRequest) -> MemoryImportResponse:
-    """Import memory tiers from a JSON or YAML manifest."""
+    """Import memory tiers from a JSON or YAML manifest (tenant-scoped)."""
     try:
         manifest = parse_manifest(req.content, req.format)
     except ValueError as e:
@@ -809,3 +875,104 @@ def import_memory_api(req: MemoryImportRequest) -> MemoryImportResponse:
         imported=imported,
         schema_version=manifest.metadata.schema_version,
     )
+
+
+# ─── OpenAPI examples (#123) ─────────────────────────────────────────────────
+# FastAPI serves /openapi.json and /docs automatically; the spec paths are
+# NOT in _API_KEY_PROTECTED_PATHS, so auth/tenant middleware never blocks
+# them. Examples enrich the auto-generated spec with real payloads.
+
+_OPENAPI_INFO_EXAMPLES: dict[str, dict[str, Any]] = {
+    "POST /api/v1/context/messages": {
+        "request": {
+            "role": "user",
+            "content": "User asked about shipping to Germany",
+            "importance": 0.8,
+        },
+        "response_200": {
+            "message_id": "cm_8f2e1a",
+            "role": "user",
+            "tokens": 9,
+            "status": "added",
+        },
+    },
+    "GET /api/v1/context/messages": {
+        "response_200": [
+            {
+                "id": "cm_8f2e1a",
+                "role": "user",
+                "content": "User asked about shipping to Germany",
+                "timestamp": "2026-08-18T22:00:00Z",
+                "importance": 0.8,
+                "tokens": 9,
+            }
+        ],
+    },
+    "GET /api/v1/context/summary": {
+        "response_200": {
+            "current_tokens": 412,
+            "max_tokens": 32000,
+            "messages_count": 7,
+            "active_messages_count": 7,
+            "pruning_count": 0,
+            "last_prune_timestamp": None,
+        },
+    },
+    "GET /api/v1/memory/export": {
+        "response_200": {
+            "export_id": "exp_20260818_ab12cd",
+            "schema_version": "1.0",
+            "counts": {"episodic": 2, "semantic": 1, "procedural": 0},
+            "data": '{"metadata": {"export_id": "exp_20260818_ab12cd"}}',
+        },
+    },
+    "POST /api/v1/memory/import": {
+        "request": {
+            "content": '{"schema_version": "1.0", "episodic": []}',
+            "format": "json",
+            "merge": True,
+        },
+        "response_200": {
+            "imported": {"episodic": 0, "semantic": 0, "procedural": 0},
+            "schema_version": "1.0",
+        },
+    },
+    "POST /api/chat": {
+        "request": {"message": "Merhaba, staging deploy ne durumda?"},
+        "response_200": {
+            "response": "[gemma4-31b-it] Mesajını aldım: ...",
+            "model": "gemma4-31b-it",
+        },
+    },
+    "GET /health": {"response_200": {"status": "ok"}},
+    "GET /models": {"response_200": {"models": ["gemma4-31b-it"]}},
+}
+
+
+def _apply_openapi_examples() -> None:
+    """Attach example payloads to endpoint operations in the OpenAPI spec."""
+    spec = app.openapi()
+    for path, ops in spec.get("paths", {}).items():
+        for verb, op in ops.items():
+            if verb not in {"get", "post", "put", "delete", "patch"}:
+                continue
+            examples = _OPENAPI_INFO_EXAMPLES.get(f"{verb.upper()} {path}")
+            if not examples:
+                continue
+            if "request" in examples and "requestBody" in op:
+                op["requestBody"]["content"]["application/json"]["examples"] = {
+                    "default": {"value": examples["request"]}
+                }
+            for key, body in examples.items():
+                if key.startswith("response_") and key[9:] in op.get("responses", {}):
+                    resp = op["responses"][key[9:]]
+                    if "content" in resp:
+                        resp["content"]["application/json"]["examples"] = {
+                            "default": {"value": body}
+                        }
+
+
+# Build the spec once (with examples) at import time; FastAPI caches the
+# result and serves /openapi.json + /docs from it.
+_apply_openapi_examples()
+app.openapi()
