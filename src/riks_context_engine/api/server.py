@@ -17,7 +17,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -25,11 +25,11 @@ from riks_context_engine.api.audit_log import (
     CRITICAL_MEMORY_IMPORT,
     get_audit_log,
     is_admin_api_key,
+    observe_request,
     record_request,
+    render_prometheus,
 )
-from riks_context_engine.api.audit_log import (
-    _default_tenant as _audit_default_tenant,
-)
+from riks_context_engine.api.audit_log import _default_tenant as _audit_default_tenant
 from riks_context_engine.context.manager import ContextWindowManager
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
@@ -152,6 +152,10 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             latency_ms=latency_ms,
             api_key=getattr(request.state, "api_key", None),
         )
+        # Prometheus metrics (#103): every request feeds request_count, the
+        # latency histogram, and error_count (status >= 500). Global (no
+        # tenant split) — Prometheus standard.
+        observe_request(latency_ms / 1000.0, response.status_code)
         return response
 
 
@@ -738,6 +742,18 @@ class ContextSummaryResponse(BaseModel):
 def health() -> dict[str, str]:
     """Liveness probe."""
     return {"status": "ok"}
+
+
+@app.get("/metrics", tags=["metrics"])
+def metrics() -> Response:
+    """Prometheus metrics endpoint (#103).
+
+    Public (no auth) so Prometheus scrapers can pull it. Exposes
+    ``riks_request_count``, ``riks_request_duration_seconds`` (histogram)
+    and ``riks_error_count`` (status >= 500) in the Prometheus text
+    exposition format (version 0.0.4).
+    """
+    return Response(content=render_prometheus(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/models", response_model=ModelsResponse, response_model_by_alias=True, tags=["models"])
