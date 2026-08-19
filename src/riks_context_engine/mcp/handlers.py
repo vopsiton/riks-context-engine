@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from opentelemetry import trace
 from pydantic import BaseModel, Field, ValidationError
 
 from ..cli.task_queue import TaskQueue, task_queue_path
@@ -320,6 +321,8 @@ class ToolHandler:
         Known limitation: on timeout the worker thread is left running as a
         daemon (orphan). Real cancellation is tracked in a follow-up issue.
         """
+        tracer = trace.get_tracer("riks")
+
         try:
             tenant_id = validate_tenant_id(params.get("tenant_id"))
         except TenantValidationError as exc:
@@ -345,28 +348,36 @@ class ToolHandler:
         task.owner_tenant = tenant_id
         queue.mark(task.id, "running")
 
-        try:
-            result = execute_goal(goal, self._tool_registry, timeout=effective_timeout)
-        except ToolExecutionError as exc:
-            queue.mark(task.id, "failed", result=str(exc))
-            raise TenantIsolationError(str(exc)) from exc
+        with tracer.start_as_current_span(
+            "riks.task.execute",
+            attributes={"goal": goal, "timeout": effective_timeout, "tenant_id": tenant_id},
+        ) as span:
+            try:
+                result = execute_goal(goal, self._tool_registry, timeout=effective_timeout)
+            except ToolExecutionError as exc:
+                queue.mark(task.id, "failed", result=str(exc))
+                span.set_attribute("status", "error")
+                raise TenantIsolationError(str(exc)) from exc
 
-        if result.timed_out:
-            queue.mark(task.id, "timeout")
+            if result.timed_out:
+                queue.mark(task.id, "timeout")
+                span.set_attribute("status", "timeout")
+                return {
+                    "status": "timeout",
+                    "goal": goal,
+                    "timeout_seconds": effective_timeout,
+                    "result": None,
+                }
+
+            queue.mark(task.id, "done", result=result.result)
+            name = goal.partition(":")[0].strip() if ":" in goal else "echo"
+            span.set_attribute("status", "done")
+            span.set_attribute("tool", name)
             return {
-                "status": "timeout",
-                "goal": goal,
-                "timeout_seconds": effective_timeout,
-                "result": None,
+                "status": "done",
+                "tool": name,
+                "result": result.result,
             }
-
-        queue.mark(task.id, "done", result=result.result)
-        name = goal.partition(":")[0].strip() if ":" in goal else "echo"
-        return {
-            "status": "done",
-            "tool": name,
-            "result": result.result,
-        }
 
     def health_check(self, params: dict[str, Any]) -> dict[str, Any]:
         """Return server health status."""
