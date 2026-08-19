@@ -287,7 +287,15 @@ def cmd_context_clear(args: argparse.Namespace) -> int:
 
 
 def cmd_task(args: argparse.Namespace) -> int:
-    """Add a task goal to the real task queue (JSON-backed, tenant-scoped)."""
+    """Add / list / execute tasks (JSON-backed, tenant-scoped, #137).
+
+    - ``riks task <goal>``               -> queue (prints queued id)
+    - ``riks task <goal> --execute``     -> queue + execute sync (result stdout)
+    - ``riks task <goal> --timeout <s>`` -> sync execute with a hard timeout
+    - ``riks task --list``               -> list queued tasks
+    - ``riks task <id> --status``        -> query one task's status/result
+    Exit codes (--execute): 0 success, 1 failure, 2 timeout.
+    """
     if args.list:
         queue = TaskQueue()
         tasks = queue.list()
@@ -295,18 +303,68 @@ def cmd_task(args: argparse.Namespace) -> int:
             print("task queue is empty")
             return 0
         for t in tasks:
-            print(f"{t.id}\t{t.status}\t{t.goal}")
+            owner = f" [{t.owner_tenant}]" if t.owner_tenant else ""
+            extra = f"\tresult={t.result!r}" if t.result is not None else ""
+            print(f"{t.id}\t{t.status}\t{t.goal}{owner}{extra}")
         return 0
-    if args.list and args.goal:
-        return _err("use --list alone, or provide a goal to queue (not both)")
+
+    # --status <id>: query a single task (tenant-scoped).
+    if getattr(args, "status", None):
+        queue = TaskQueue()
+        tenant = os.environ.get("RIKS_TENANT_ID", "").strip()
+        task = queue.get(args.status)
+        if task is None:
+            return _err(f"task not found: {args.status}")
+        if task.owner_tenant and tenant and task.owner_tenant != tenant:
+            return _err(
+                f"access denied: task {args.status} belongs to tenant "
+                f"'{task.owner_tenant}', not '{tenant}'"
+            )
+        print(f"{task.id}\t{task.status}\t{task.goal}")
+        if task.result is not None:
+            print(f"result: {task.result}")
+        return 0
+
     if not args.goal:
-        if args.list:
-            pass  # handled below
-        else:
-            return _err("task goal is required (or use --list)")
+        return _err("task goal is required (or use --list / --status <id>)")
+
     queue = TaskQueue()
     task = queue.add(args.goal.strip())
     print(f"task queued: {task.id} ({task.status})")
+
+    if not getattr(args, "execute", False):
+        return 0
+
+    # --- Sync execution (#137) ---
+    from riks_context_engine.tools import (
+        ToolExecutionError,
+        build_default_registry,
+        execute_goal,
+    )
+
+    # Tenant isolation: the executing tenant must own the task.
+    tenant = os.environ.get("RIKS_TENANT_ID", "").strip()
+    if task.owner_tenant and tenant and task.owner_tenant != tenant:
+        queue.mark(task.id, "failed", "access denied: cross-tenant execution")
+        _err(f"access denied: task {task.id} belongs to tenant '{task.owner_tenant}'")
+        return 1
+
+    queue.mark(task.id, "running")
+    timeout = args.timeout if getattr(args, "timeout", None) else None
+    try:
+        outcome = execute_goal(task.goal, build_default_registry(), timeout=timeout)
+    except ToolExecutionError as exc:
+        queue.mark(task.id, "failed", str(exc))
+        _err(f"execution failed: {exc}")
+        return 1
+
+    if outcome.timed_out:
+        queue.mark(task.id, "timeout", "execution timed out")
+        print(f"timeout after {timeout}s: task {task.id}", file=sys.stderr)
+        return 2
+
+    queue.mark(task.id, "done", outcome.result)
+    print(outcome.result)
     return 0
 
 
@@ -402,8 +460,25 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Task commands
     task = sub.add_parser("task", help="Task operations")
-    task.add_argument("goal", type=str, nargs="?", default=None, help="Goal to queue")
+    task.add_argument("goal", type=str, nargs="?", default=None, help="Goal to queue/execute")
     task.add_argument("--list", action="store_true", help="List queued tasks")
+    task.add_argument(
+        "--execute",
+        action="store_true",
+        help="Execute the task synchronously (result to stdout)",
+    )
+    task.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Hard timeout in seconds for sync execution",
+    )
+    task.add_argument(
+        "--status",
+        type=str,
+        default=None,
+        help="Query the status/result of a task by id",
+    )
 
     # Reflection commands
     refl = sub.add_parser("reflect", help="Self-reflection")

@@ -219,9 +219,44 @@ riks memory query --type episodic "deploy"
 riks memory stats
 riks context stats
 riks context prune
-riks task "Prod'a deploy et" --execute
 riks reflect --session 2026-08-18-abc
 ```
+
+### Görevler (task) — gerçek execute (#137)
+
+Bir **task** bir goal'dür; `--execute` ile goal bir **tool** olarak dispatch edilir.
+Goal sözdizimi: `<tool>: <metin>` (tool adı yoksa varsayılan `echo` tool kullanılır).
+
+```bash
+# Sadece queue'a ekle (varsayılan davranış değişmedi)
+riks task "Prod'a deploy et"
+# task queued: task_xxxxxxxx (queued)
+
+# Senkron execute — tool'u çalıştırıp sonucu stdout'a basar
+riks task "echo: merhaba" --execute
+# merhaba
+riks task "just a plain goal" --execute      # varsayılan tool (echo)
+
+# Timeout ile (varsayılan yok; 0 = beklenmez)
+riks task "echo: yavaş" --execute --timeout 5
+
+# Task listesini gör (id, status, goal, owner, result)
+riks task --list
+
+# Tekil task'ın status/sonucunu sorgula (tenant-scoped)
+riks task --status task_xxxxxxxx
+```
+
+**Exit code'ları (`--execute`):** `0` başarılı (sonuç stdout), `1` başarısız (hata stderr),
+`2` timeout.
+
+**Task modeli:** `queued → running → done | failed | timeout`. Tenant izolasyonu
+execution'da korunur: bir task `RIKS_TENANT_ID` tenant'ına aittir; başka tenant o
+task'ı execute/sorgulayamaz (erişim reddi). İlk tool `echo`'tur; sonraki tool'lar
+(`llm_call`, `web_fetch`, `file_read`) follow-up.
+
+> **Not:** `--background` (background job + `--status <job-id>` sorgusu) follow-up
+turunda gelecek; bu turda sync execute gerçek çalışıyor.
 
 ---
 

@@ -29,10 +29,11 @@ def task_queue_path() -> str:
 class QueueTask:
     id: str
     goal: str
-    status: str = "queued"  # queued | running | done | failed
+    status: str = "queued"  # queued | running | done | failed | timeout
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     executed_at: str | None = None
     result: str | None = None
+    owner_tenant: str | None = None  # tenant that created the task (RIKS_TENANT_ID)
 
 
 class TaskQueue:
@@ -61,7 +62,11 @@ class TaskQueue:
         p.write_text(json.dumps({"tasks": [asdict(t) for t in self._tasks.values()]}, indent=2))
 
     def add(self, goal: str) -> QueueTask:
-        task = QueueTask(id=f"task_{uuid.uuid4().hex[:8]}", goal=goal)
+        task = QueueTask(
+            id=f"task_{uuid.uuid4().hex[:8]}",
+            goal=goal,
+            owner_tenant=os.environ.get("RIKS_TENANT_ID", "").strip() or None,
+        )
         self._tasks[task.id] = task
         self._save()
         return task
@@ -79,7 +84,7 @@ class TaskQueue:
         task.status = status
         if result is not None:
             task.result = result
-        if status in ("done", "failed"):
+        if status in ("done", "failed", "timeout"):
             task.executed_at = datetime.now(timezone.utc).isoformat()
         self._save()
 
