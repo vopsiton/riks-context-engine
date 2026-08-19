@@ -18,6 +18,8 @@ import os
 import sys
 from typing import Any
 
+from opentelemetry import trace
+
 from ..tools.executor import ToolExecutionError
 from .handlers import TenantIsolationError, create_handler
 from .protocol import (
@@ -108,12 +110,21 @@ class MCPServer:
         if not handler_method or not callable(handler_method):
             raise JsonRpcError(ERR_METHOD_NOT_FOUND, f"No handler for tool: {tool_name}")
 
-        try:
-            result = handler_method(tool_args)
-        except TenantIsolationError as exc:
-            raise JsonRpcError(ERR_INVALID_PARAMS, str(exc)) from exc
-        except ToolExecutionError as exc:
-            raise JsonRpcError(ERR_INVALID_PARAMS, str(exc)) from exc
+        tracer = trace.get_tracer("riks")
+        tenant_id = tool_args.get("tenant_id", "")
+        with tracer.start_as_current_span(
+            f"mcp.tool.{tool_name}",
+            attributes={"tool_name": tool_name, "tenant_id": tenant_id},
+        ) as span:
+            try:
+                result = handler_method(tool_args)
+                span.set_attribute("status", "done")
+            except TenantIsolationError as exc:
+                span.set_attribute("status", "error")
+                raise JsonRpcError(ERR_INVALID_PARAMS, str(exc)) from exc
+            except ToolExecutionError as exc:
+                span.set_attribute("status", "error")
+                raise JsonRpcError(ERR_INVALID_PARAMS, str(exc)) from exc
 
         return {
             "content": [
@@ -236,6 +247,10 @@ def main() -> None:
         level=os.environ.get("RIKS_LOG_LEVEL", "WARNING"),
         format="%(levelname)s %(name)s: %(message)s",
     )
+
+    from riks_context_engine.api.telemetry import setup_telemetry
+
+    setup_telemetry()
 
     data_dir = os.environ.get("RIKS_DATA_DIR", "data")
 

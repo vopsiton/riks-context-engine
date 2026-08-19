@@ -25,11 +25,14 @@ from riks_context_engine.api.audit_log import (
     CRITICAL_MEMORY_IMPORT,
     get_audit_log,
     is_admin_api_key,
-    observe_request,
     record_request,
-    render_prometheus,
 )
 from riks_context_engine.api.audit_log import _default_tenant as _audit_default_tenant
+from riks_context_engine.api.telemetry import (
+    get_prometheus_output,
+    observe_request,
+    setup_telemetry,
+)
 from riks_context_engine.context.manager import ContextWindowManager
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
@@ -654,6 +657,7 @@ def _build_cors_config() -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _episodic_memory, _semantic_memory, _procedural_memory, _ws_streamer
+    setup_telemetry()
     data_dir = os.environ.get("DATA_DIR", "data")
     _episodic_memory = EpisodicMemory(storage_path=f"{data_dir}/episodic.json")
     _semantic_memory = SemanticMemory(db_path=f"{data_dir}/semantic.db")
@@ -746,14 +750,12 @@ def health() -> dict[str, str]:
 
 @app.get("/metrics", tags=["metrics"])
 def metrics() -> Response:
-    """Prometheus metrics endpoint (#103).
+    """Prometheus metrics endpoint (#103, OTel-backed #109).
 
-    Public (no auth) so Prometheus scrapers can pull it. Exposes
-    ``riks_request_count``, ``riks_request_duration_seconds`` (histogram)
-    and ``riks_error_count`` (status >= 500) in the Prometheus text
-    exposition format (version 0.0.4).
+    Public (no auth) so Prometheus scrapers can pull it. Uses the
+    OpenTelemetry PrometheusMetricReader for exposition (version 0.0.4).
     """
-    return Response(content=render_prometheus(), media_type="text/plain; version=0.0.4")
+    return Response(content=get_prometheus_output(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/models", response_model=ModelsResponse, response_model_by_alias=True, tags=["models"])
