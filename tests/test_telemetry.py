@@ -118,11 +118,13 @@ class TestMCPToolTracing:
         from riks_context_engine.mcp.handlers import ToolHandler
 
         handler = ToolHandler(data_dir="/tmp/riks-test-otel")
-        result = handler.task_execute({
-            "tenant_id": "test-tenant",
-            "goal": "echo: hello",
-            "timeout": 10,
-        })
+        result = handler.task_execute(
+            {
+                "tenant_id": "test-tenant",
+                "goal": "echo: hello",
+                "timeout": 10,
+            }
+        )
         assert result["status"] == "done"
         task_spans = [s for s in exporter.spans if s.name == "riks.task.execute"]
         assert len(task_spans) == 1
