@@ -608,10 +608,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _ws_streamer = None
 
 
+# #123 turn 2: spec/docs paths are pinned explicitly (FastAPI defaults are
+# implicit; making them explicit lets tests assert the contract directly).
+OPENAPI_URL = "/openapi.json"
+DOCS_URL = "/docs"
+REDOC_URL = "/redoc"
+
 app = FastAPI(
     title="Rik's Context Engine API",
     description="HTTP API for AI context and memory management",
     version="0.4.0",
+    openapi_url=OPENAPI_URL,
+    docs_url=DOCS_URL,
+    redoc_url=REDOC_URL,
     lifespan=lifespan,
 )
 
@@ -635,11 +644,12 @@ app.add_api_websocket_route("/ws/v1/context/stream", websocket_context_stream)
 
 
 class HealthResponse(BaseModel):
-    status: str
+    # #123: examples ride in the OpenAPI spec via Field (turn 2).
+    status: str = Field("ok", description="Liveness state", examples=["ok"])
 
 
 class ModelsResponse(BaseModel):
-    models: list[str]
+    models: list[str] = Field(description="Available chat models", examples=[["gemma4-31b-it"]])
 
 
 class ContextMessageResponse(BaseModel):
@@ -667,13 +677,13 @@ class ContextSummaryResponse(BaseModel):
     last_prune_timestamp: str | None
 
 
-@app.get("/health", response_model=HealthResponse, tags=["health"])
+@app.get("/health", response_model=HealthResponse, response_model_by_alias=True, tags=["health"])
 def health() -> dict[str, str]:
     """Liveness probe."""
     return {"status": "ok"}
 
 
-@app.get("/models", response_model=ModelsResponse, tags=["models"])
+@app.get("/models", response_model=ModelsResponse, response_model_by_alias=True, tags=["models"])
 def list_models() -> dict[str, list[str]]:
     """List available chat models."""
     return {"models": _MODELS}
@@ -878,8 +888,9 @@ def import_memory_api(req: MemoryImportRequest) -> MemoryImportResponse:
 
 
 # ─── OpenAPI examples (#123) ─────────────────────────────────────────────────
-# FastAPI serves /openapi.json and /docs automatically; the spec paths are
-# NOT in _API_KEY_PROTECTED_PATHS, so auth/tenant middleware never blocks
+# FastAPI serves /openapi.json + /docs + /redoc from the URLs pinned at app
+# construction (OPENAPI_URL/DOCS_URL/REDOC_URL, #123 turn 2); the spec paths
+# are NOT in _API_KEY_PROTECTED_PATHS, so auth/tenant middleware never blocks
 # them. Examples enrich the auto-generated spec with real payloads.
 
 _OPENAPI_INFO_EXAMPLES: dict[str, dict[str, Any]] = {
