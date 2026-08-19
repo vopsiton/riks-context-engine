@@ -312,9 +312,34 @@ class ContextWindowManager:
         return summarizer.summarize_tier3(self, force=force)  # type: ignore[no-any-return]
 
     def clear(self) -> None:
-        """Clear all messages from context window."""
+        """Clear all messages and reset pruning stats, persisting the empty window."""
         self.messages = []
+        self._total_pruning_events = 0
         self._update_stats()
+        self._auto_save()
+
+    def prune_before(self, older_than_days: int, type_filter: str | None = None) -> int:
+        """Remove messages older than N days, optionally filtered by role.
+
+        ``type`` maps to the message role in the context window
+        (user/assistant/system). Removed messages are dropped from the active
+        window and the change is persisted.
+
+        Returns the number of removed messages.
+        """
+        cutoff = datetime.now(timezone.utc).timestamp() - older_than_days * 86400
+        kept = []
+        for m in self.messages:
+            too_old = m.timestamp.timestamp() < cutoff
+            role_match = type_filter is None or m.role == type_filter
+            if not (too_old and role_match):
+                kept.append(m)
+        removed = len(self.messages) - len(kept)
+        if removed:
+            self.messages = kept
+            self._update_stats()
+            self._auto_save()
+        return removed
 
     def mark_below_threshold(self, threshold: int = 0) -> list[ContextMessage]:
         """Return non-pruned messages whose token count is below threshold.

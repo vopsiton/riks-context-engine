@@ -49,24 +49,15 @@ class TestCLI:
         assert result != 0
         assert "error:" in err
 
-    def test_main_unimplemented_commands_report_honestly(self, capsys):
-        """context/task/reflect are out of scope for #124 turn 1: they must NOT
-        pretend success — exit code 1 + 'not implemented yet'."""
-        for argv in (
-            ["riks", "memory", "stats"],
-            ["riks", "context", "stats"],
-            ["riks", "context", "prune"],
-            ["riks", "context", "clear"],
-            ["riks", "task", "test goal"],
-            ["riks", "reflect", "--session", "test-session"],
-        ):
-            sys.argv = argv
-            result = main()
-            out = capsys.readouterr()
-            combined = out.out + out.err
-            assert result == 1
-            assert "not implemented yet" in combined
-            assert "Command executed successfully" not in combined
+    def test_memory_stats_still_reports_not_implemented(self, capsys):
+        """memory stats is out of scope for #124 turn 2: must NOT pretend success."""
+        sys.argv = ["riks", "memory", "stats"]
+        result = main()
+        out = capsys.readouterr()
+        combined = out.out + out.err
+        assert result == 1
+        assert "not implemented yet" in combined
+        assert "Command executed successfully" not in combined
 
     def test_main_unknown_command_exits_with_error(self):
         """Test riks with unknown command."""

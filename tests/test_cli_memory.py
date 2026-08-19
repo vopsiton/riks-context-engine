@@ -157,17 +157,19 @@ class TestTenantIsolation:
 
 
 class TestNotImplemented:
-    def test_context_stats_reports_not_implemented(self, capsys):
+    def test_context_stats_is_implemented(self, tmp_path, monkeypatch, capsys):
+        """ "context stats" now returns real store data (turn 2)."""
+        monkeypatch.setenv("RIKS_DATA_DIR", str(tmp_path))
         rc = _run(["context", "stats"])
-        assert rc != 0
-        out = capsys.readouterr()
-        assert "not implemented yet" in (out.out + out.err)
+        assert rc == 0
+        assert "messages_total" in capsys.readouterr().out
 
-    def test_task_reports_not_implemented(self, capsys):
+    def test_task_is_implemented(self, tmp_path, monkeypatch, capsys):
+        """ "task <goal>" now queues into the real store (turn 2)."""
+        monkeypatch.setenv("RIKS_DATA_DIR", str(tmp_path))
         rc = _run(["task", "do something"])
-        assert rc != 0
-        out = capsys.readouterr()
-        assert "not implemented yet" in (out.out + out.err)
+        assert rc == 0
+        assert "task queued" in capsys.readouterr().out
 
     def test_fake_success_string_gone(self, capsys):
         """The old no-op printed 'Command executed successfully' — must never appear."""
