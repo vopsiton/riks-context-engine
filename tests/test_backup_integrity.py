@@ -74,9 +74,7 @@ class TestBackupCreation:
 
         for child in snap2.rglob("*"):
             rel = child.relative_to(snap2)
-            assert not str(rel).startswith("backups"), (
-                f"backup dir leaked into snapshot: {rel}"
-            )
+            assert not str(rel).startswith("backups"), f"backup dir leaked into snapshot: {rel}"
 
 
 # ---------------------------------------------------------------------------
@@ -272,9 +270,7 @@ class TestRiksDoctor:
 
         for f in data_dir.rglob("*"):
             if f.is_file():
-                assert mtimes_before.get(str(f)) == f.stat().st_mtime, (
-                    f"doctor modified {f}"
-                )
+                assert mtimes_before.get(str(f)) == f.stat().st_mtime, f"doctor modified {f}"
 
 
 # ---------------------------------------------------------------------------
