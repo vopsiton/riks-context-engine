@@ -1,0 +1,22 @@
+# Service for Rik's Context Engine (#111)
+#
+# Cluster-internal Service. For external traffic, front this with an Ingress
+# or a LoadBalancer Service (out of scope for this PR).
+apiVersion: v1
+kind: Service
+metadata:
+  name: riks-context-engine
+  namespace: riks-context-engine
+  labels:
+    app.kubernetes.io/name: riks-context-engine
+    app.kubernetes.io/part-of: riks
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: riks-context-engine
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP

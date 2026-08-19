@@ -1,0 +1,8 @@
+# Namespace for Rik's Context Engine (#111)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: riks-context-engine
+  labels:
+    app.kubernetes.io/name: riks-context-engine
+    app.kubernetes.io/part-of: riks
