@@ -21,6 +21,15 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from riks_context_engine.api.audit_log import (
+    CRITICAL_MEMORY_IMPORT,
+    get_audit_log,
+    is_admin_api_key,
+    record_request,
+)
+from riks_context_engine.api.audit_log import (
+    _default_tenant as _audit_default_tenant,
+)
 from riks_context_engine.context.manager import ContextWindowManager
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
@@ -64,16 +73,30 @@ _API_KEY_PROTECTED_PATHS = frozenset(
         "/models",
         "/api/v1/context/messages",
         "/api/v1/context/summary",
+        "/api/v1/audit",
+        "/api/v1/audit/operation",
     ]
 )
 
 
 class APIKeyAuthMiddleware(BaseHTTPMiddleware):
-    """FastAPI middleware for API key authentication."""
+    """FastAPI middleware for API key authentication (#110).
+
+    - When an ``API_KEY`` is configured, every protected path requires a
+      matching ``X-API-Key`` header; missing/mismatched -> ``401``.
+    - When no ``API_KEY`` is configured, protected paths are open (local
+      dev) — preserved from prior behavior so existing dev/CI flows do not
+      break (no breaking change, #110).
+    - Stores the presented key on ``request.state.api_key`` so the audit
+      middleware can derive the caller's role.
+    """
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path in _API_KEY_PROTECTED_PATHS and API_KEY:
-            if request.headers.get("X-API-Key") != API_KEY:
+        path = request.url.path
+        api_key = request.headers.get("X-API-Key")
+        request.state.api_key = api_key
+        if path in _API_KEY_PROTECTED_PATHS and API_KEY:
+            if api_key != API_KEY:
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
         return await call_next(request)
 
@@ -100,6 +123,36 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             except TenantValidationError as exc:
                 return JSONResponse(status_code=401, content={"detail": exc.detail})
         return await call_next(request)
+
+
+# ─── Audit Logging (#110) ───────────────────────────────────────────────────
+
+
+class AuditLogMiddleware(BaseHTTPMiddleware):
+    """Record every HTTP request in the tenant-scoped audit log (#110).
+
+    Captures timestamp, tenant, endpoint, method, status code, latency and
+    the caller's role (derived from the API key). Runs *last* (innermost) so
+    it measures the time the downstream handlers actually took, and records
+    the final status code (including 401s raised by auth/tenant middleware
+    for protected paths). Requests with no validated tenant are attributed
+    to the ``RIKS_TENANT_ID`` env default or ``unauthenticated``.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        tenant = getattr(request.state, "tenant_id", None) or _audit_default_tenant()
+        record_request(
+            tenant=tenant,
+            endpoint=request.url.path,
+            method=request.method,
+            status=response.status_code,
+            latency_ms=latency_ms,
+            api_key=getattr(request.state, "api_key", None),
+        )
+        return response
 
 
 # ─── Rate Limiting (#99) ──────────────────────────────────────────────────────
@@ -638,6 +691,10 @@ app.add_middleware(RateLimitMiddleware, config=_rate_limit_config)
 app.add_middleware(APIKeyAuthMiddleware)
 # Tenant isolation MUST run after API-key auth: auth first, then scope.
 app.add_middleware(TenantAuthMiddleware)
+# Audit logging runs LAST (innermost) so it measures the downstream handler
+# time and records the final status code, including 401s raised by the
+# auth/tenant middleware for protected paths (#110).
+app.add_middleware(AuditLogMiddleware)
 
 # Register WebSocket endpoint (after app is defined)
 app.add_api_websocket_route("/ws/v1/context/stream", websocket_context_stream)
@@ -880,10 +937,121 @@ def import_memory_api(req: MemoryImportRequest) -> MemoryImportResponse:
         procedural_memory=_procedural_memory,
         merge=req.merge,
     )
+    # Critical-operation audit (memory.add/import) — in-process hook (#110).
+    try:
+        _audit_tenant = os.environ.get("RIKS_TENANT_ID", "").strip() or "unauthenticated"
+        get_audit_log(_audit_tenant).record_operation(
+            CRITICAL_MEMORY_IMPORT,
+            endpoint="/api/v1/memory/import",
+            method="POST",
+            status=200,
+        )
+    except Exception:  # auditing must never break the import
+        pass
 
     return MemoryImportResponse(
         imported=imported,
         schema_version=manifest.metadata.schema_version,
+    )
+
+
+# ─── Audit Log Endpoint (#110) ──────────────────────────────────────────────
+
+
+class AuditEntryResponse(BaseModel):
+    id: str
+    timestamp: str
+    tenant: str
+    endpoint: str
+    method: str
+    status: int
+    latency_ms: float
+    user: str
+    role: str
+    category: str
+
+
+class AuditLogResponse(BaseModel):
+    tenant: str
+    total: int
+    limit: int
+    offset: int
+    entries: list[AuditEntryResponse]
+
+
+@app.get("/api/v1/audit", response_model=AuditLogResponse, tags=["audit"])
+def audit_log(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=1000, description="Max entries to return")] = 100,
+    offset: Annotated[int, Query(ge=0, description="Entries to skip")] = 0,
+    category: Annotated[
+        str | None, Query(description="Filter by category (e.g. memory.import)")
+    ] = None,
+    endpoint: Annotated[str | None, Query(description="Filter by endpoint path")] = None,
+) -> AuditLogResponse:
+    """List the audit log for the caller's tenant (tenant-scoped, #110).
+
+    Regular users see only their own tenant's entries. When the
+    ``RIKS_AUDIT_ADMIN`` env var is enabled, a caller whose API key is a
+    registered admin may read ANY tenant's log via the ``?tenant=`` param.
+    """
+    tenant_id: str = request.state.tenant_id  # set by TenantAuthMiddleware
+    requested_tenant = tenant_id
+    if os.environ.get("RIKS_AUDIT_ADMIN", "").strip().lower() in {"1", "true", "yes", "on"}:
+        role = "admin" if is_admin_api_key(getattr(request.state, "api_key", None)) else "regular"
+        if role == "admin":
+            requested_tenant = request.query_params.get("tenant") or tenant_id
+
+    store = get_audit_log(requested_tenant)
+    entries = store.query(limit=limit, offset=offset, category=category, endpoint=endpoint)
+    return AuditLogResponse(
+        tenant=requested_tenant,
+        total=store.total(),
+        limit=limit,
+        offset=offset,
+        entries=[
+            AuditEntryResponse(
+                id=e.id,
+                timestamp=e.timestamp,
+                tenant=e.tenant,
+                endpoint=e.endpoint,
+                method=e.method,
+                status=e.status,
+                latency_ms=e.latency_ms,
+                user=e.user,
+                role=e.role,
+                category=e.category,
+            )
+            for e in entries
+        ],
+    )
+
+
+@app.post("/api/v1/audit/operation", response_model=AuditEntryResponse, tags=["audit"])
+def audit_record_operation(
+    request: Request,
+    category: Annotated[str, Query(description="Operation category (e.g. context.clear)")],
+    endpoint: Annotated[str, Query(description="Endpoint path the operation touched")],
+    method: Annotated[str, Query(description="HTTP method")],
+    status: Annotated[int, Query(ge=100, le=599)] = 200,
+) -> AuditEntryResponse:
+    """Record a critical in-process operation in the tenant's audit log (#110)."""
+    tenant_id: str = request.state.tenant_id
+    role = "admin" if is_admin_api_key(getattr(request.state, "api_key", None)) else "regular"
+    entry = get_audit_log(tenant_id).record_operation(
+        category, endpoint=endpoint, method=method, status=status, role=role
+    )
+    return AuditEntryResponse(
+        id=entry.id,
+        timestamp=entry.timestamp,
+        tenant=entry.tenant,
+        endpoint=entry.endpoint,
+        method=entry.method,
+        status=entry.status,
+        latency_ms=entry.latency_ms,
+        user=entry.user,
+        role=entry.role,
+        category=entry.category,
     )
 
 
