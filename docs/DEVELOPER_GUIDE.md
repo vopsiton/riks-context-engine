@@ -6,6 +6,8 @@
 **Python:** 3.10+
 **License:** AGPL-3.0
 
+![Project structure: modules, tests, and scripts](images/dev-project-structure.png)
+
 ---
 
 ## Table of Contents

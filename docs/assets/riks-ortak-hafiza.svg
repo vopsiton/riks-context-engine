@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="100%" height="100%" style="background-color: #F8F9FA; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <!-- Gölgelendirmeler -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#1E293B" flood-opacity="0.06" />
+    </filter>
+    <filter id="glow-alfa" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#84C5F4" flood-opacity="0.4" />
+    </filter>
+    <filter id="glow-beta" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#A7F3D0" flood-opacity="0.4" />
+    </filter>
+    <filter id="glow-genel" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#FDE047" flood-opacity="0.4" />
+    </filter>
+
+    <!-- Bağlantı Çizgisi Gradients -->
+    <linearGradient id="grad-alfa" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#60A5FA" />
+    </linearGradient>
+    <linearGradient id="grad-beta" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#34D399" />
+    </linearGradient>
+    <linearGradient id="grad-genel" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#FBBF24" />
+    </linearGradient>
+  </defs>
+
+  <!-- Arka Plan Desen Dokusu -->
+  <rect width="1000" height="620" fill="#F8F9FA" />
+  <g opacity="0.03">
+    <circle cx="100" cy="100" r="80" fill="none" stroke="#1E293B" stroke-width="2" />
+    <circle cx="900" cy="500" r="120" fill="none" stroke="#1E293B" stroke-width="2" />
+    <path d="M 0,310 L 1000,310 M 500,0 L 500,620" stroke="#1E293B" stroke-width="1" stroke-dasharray="10 10" />
+  </g>
+
+  <!-- BAŞLIK ALANI -->
+  <g transform="translate(50, 55)">
+    <text x="0" y="0" font-size="24" font-weight="800" fill="#1E293B" letter-spacing="-0.5">ORTAK HAFIZA (SHARED MEMORY)</text>
+    <text x="0" y="22" font-size="14" fill="#64748B" font-weight="400">Rik Context Engine mimarisinde izole veri yönetimi ve güvenli multi-tenant paylaşım modeli</text>
+  </g>
+
+  <!-- VERİ AKIŞ HATLARI (BAĞLANTILAR) -->
+  <!-- Agent A -> Alfa Odası -->
+  <path d="M 290,195 C 380,195 380,180 480,180" fill="none" stroke="url(#grad-alfa)" stroke-width="3" stroke-linecap="round" stroke-dasharray="8 4" />
+  <circle cx="480" cy="180" r="5" fill="#3B82F6" />
+
+  <!-- Agent B -> Beta Odası -->
+  <path d="M 290,310 L 480,310" fill="none" stroke="url(#grad-beta)" stroke-width="3" stroke-linecap="round" stroke-dasharray="8 4" />
+  <circle cx="480" cy="310" r="5" fill="#10B981" />
+
+  <!-- Agent C -> Genel Oda -->
+  <path d="M 290,425 C 380,425 380,440 480,440" fill="none" stroke="url(#grad-genel)" stroke-width="3" stroke-linecap="round" stroke-dasharray="8 4" />
+  <circle cx="480" cy="440" r="5" fill="#F59E0B" />
+
+
+  <!-- SOL TARAF: AI AGENT KARTLARI -->
+
+  <!-- AGENT A (Proje-Alfa) -->
+  <g transform="translate(60, 130)" filter="url(#shadow)">
+    <!-- Kart Gövdesi -->
+    <rect width="230" height="110" rx="16" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5" />
+    <rect width="8" height="110" rx="4" fill="#3B82F6" />
+    <!-- Agent İkonu -->
+    <rect x="24" y="20" width="36" height="36" rx="10" fill="#EFF6FF" />
+    <path d="M 42,32 A 4,4 0 1,0 42,40 A 4,4 0 1,0 42,32 M 34,38 L 38,38 M 34,44 L 46,44" stroke="#3B82F6" stroke-width="2" stroke-linecap="round" fill="none" />
+    <!-- Kart Bilgileri -->
+    <text x="72" y="36" font-size="15" font-weight="700" fill="#1E293B">Agent A</text>
+    <rect x="72" y="44" width="75" height="18" rx="4" fill="#DBEAFE" />
+    <text x="77" y="57" font-size="10" font-weight="700" fill="#1E40AF">proje-alfa</text>
+    <!-- Durum -->
+    <text x="24" y="88" font-size="11" fill="#64748B">Bağlantı: </text>
+    <text x="75" y="88" font-size="11" font-weight="600" fill="#2563EB">Aktif / Yazma-Okuma</text>
+  </g>
+
+  <!-- AGENT B (Proje-Beta) -->
+  <g transform="translate(60, 255)" filter="url(#shadow)">
+    <!-- Kart Gövdesi -->
+    <rect width="230" height="110" rx="16" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5" />
+    <rect width="8" height="110" rx="4" fill="#10B981" />
+    <!-- Agent İkonu -->
+    <rect x="24" y="20" width="36" height="36" rx="10" fill="#ECFDF5" />
+    <path d="M 42,32 A 4,4 0 1,0 42,40 A 4,4 0 1,0 42,32 M 34,38 L 38,38 M 34,44 L 46,44" stroke="#10B981" stroke-width="2" stroke-linecap="round" fill="none" />
+    <!-- Kart Bilgileri -->
+    <text x="72" y="36" font-size="15" font-weight="700" fill="#1E293B">Agent B</text>
+    <rect x="72" y="44" width="75" height="18" rx="4" fill="#D1FAE5" />
+    <text x="77" y="57" font-size="10" font-weight="700" fill="#065F46">proje-beta</text>
+    <!-- Durum -->
+    <text x="24" y="88" font-size="11" fill="#64748B">Bağlantı: </text>
+    <text x="75" y="88" font-size="11" font-weight="600" fill="#059669">Aktif / Yazma-Okuma</text>
+  </g>
+
+  <!-- AGENT C (Genel) -->
+  <g transform="translate(60, 380)" filter="url(#shadow)">
+    <!-- Kart Gövdesi -->
+    <rect width="230" height="110" rx="16" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5" />
+    <rect width="8" height="110" rx="4" fill="#F59E0B" />
+    <!-- Agent İkonu -->
+    <rect x="24" y="20" width="36" height="36" rx="10" fill="#FEF3C7" />
+    <path d="M 42,32 A 4,4 0 1,0 42,40 A 4,4 0 1,0 42,32 M 34,38 L 38,38 M 34,44 L 46,44" stroke="#D97706" stroke-width="2" stroke-linecap="round" fill="none" />
+    <!-- Kart Bilgileri -->
+    <text x="72" y="36" font-size="15" font-weight="700" fill="#1E293B">Agent C</text>
+    <rect x="72" y="44" width="75" height="18" rx="4" fill="#FEF3C7" />
+    <text x="77" y="57" font-size="10" font-weight="700" fill="#92400E">genel</text>
+    <!-- Durum -->
+    <text x="24" y="88" font-size="11" fill="#64748B">Bağlantı: </text>
+    <text x="75" y="88" font-size="11" font-weight="600" fill="#D97706">Aktif / Yazma-Okuma</text>
+  </g>
+
+
+  <!-- SAĞ TARAF: RIK CONTEXT ENGINE - ORTAK HAFIZA HAVUZU -->
+
+  <g transform="translate(480, 110)" filter="url(#shadow)">
+    <!-- Ana Büyük Kutu (Engine) -->
+    <rect width="450" height="400" rx="24" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+    
+    <!-- Üst Başlık ve Etiket -->
+    <rect x="24" y="-16" width="300" height="32" rx="8" fill="#1E293B" />
+    <text x="40" y="5" font-size="13" font-weight="700" fill="#FFFFFF">RIK CONTEXT ENGINE</text>
+    <text x="180" y="5" font-size="11" font-weight="500" fill="#94A3B8">| Ortak Hafıza Havuzu</text>
+
+    <!-- TENANT ODALARI -->
+
+    <!-- Oda 1: Alfa Verileri -->
+    <g transform="translate(24, 40)">
+      <rect width="402" height="100" rx="14" fill="#F0F7FF" stroke="#3B82F6" stroke-width="1" stroke-opacity="0.3" filter="url(#glow-alfa)" />
+      <!-- Simge ve Başlık -->
+      <circle cx="36" cy="36" r="16" fill="#DBEAFE" />
+      <path d="M 32,32 L 40,32 M 32,36 L 40,36 M 32,40 L 38,40" stroke="#1E40AF" stroke-width="2" stroke-linecap="round" />
+      <text x="64" y="34" font-size="14" font-weight="700" fill="#1E3A8A">alfa-odası (Proje Alfa Verileri)</text>
+      <text x="64" y="50" font-size="11" fill="#1E40AF" opacity="0.8">Dosyalar, Konuşma Geçmişi, Hafıza Vektörleri</text>
+      <!-- Meta info -->
+      <rect x="64" y="62" width="90" height="18" rx="4" fill="#DBEAFE" />
+      <text x="70" y="74" font-size="9" font-weight="700" fill="#1E40AF">Kapasite: 5 GB</text>
+    </g>
+
+    <!-- Kalın Ayrım Çizgisi 1 (Alfa ve Beta Arası) -->
+    <line x1="24" y1="155" x2="426" y2="155" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 1" />
+    
+    <!-- Engel / Kilit Etiketi 1 -->
+    <g transform="translate(185, 143)">
+      <rect width="100" height="24" rx="12" fill="#F87171" />
+      <!-- Kilit İkonu -->
+      <path d="M 197,153 L 197,150 A 3,3 0 0,1 203,150 L 203,153 M 195,153 L 205,153 L 205,159 L 195,159 Z" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round" transform="translate(-185, -143) scale(0.9)" />
+      <text x="25" y="16" font-size="10" font-weight="700" fill="#FFFFFF">Erişilemez</text>
+    </g>
+
+    <!-- Oda 2: Beta Verileri -->
+    <g transform="translate(24, 170)">
+      <rect width="402" height="100" rx="14" fill="#F0FDF4" stroke="#10B981" stroke-width="1" stroke-opacity="0.3" filter="url(#glow-beta)" />
+      <!-- Simge ve Başlık -->
+      <circle cx="36" cy="36" r="16" fill="#D1FAE5" />
+      <path d="M 32,32 L 40,32 M 32,36 L 40,36 M 32,40 L 38,40" stroke="#065F46" stroke-width="2" stroke-linecap="round" />
+      <text x="64" y="34" font-size="14" font-weight="700" fill="#064E3B">beta-odası (Proje Beta Verileri)</text>
+      <text x="64" y="50" font-size="11" fill="#065F46" opacity="0.8">API Anahtarları, Entegrasyon Logları, İndeksler</text>
+      <!-- Meta info -->
+      <rect x="64" y="62" width="90" height="18" rx="4" fill="#D1FAE5" />
+      <text x="70" y="74" font-size="9" font-weight="700" fill="#065F46">Kapasite: 10 GB</text>
+    </g>
+
+    <!-- Kalın Ayrım Çizgisi 2 (Beta ve Genel Arası) -->
+    <line x1="24" y1="285" x2="426" y2="285" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 1" />
+    
+    <!-- Engel / Kilit Etiketi 2 -->
+    <g transform="translate(185, 273)">
+      <rect width="100" height="24" rx="12" fill="#F87171" />
+      <!-- Kilit İkonu -->
+      <path d="M 197,153 L 197,150 A 3,3 0 0,1 203,150 L 203,153 M 195,153 L 205,153 L 205,159 L 195,159 Z" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round" transform="translate(-185, -143) scale(0.9)" />
+      <text x="25" y="16" font-size="10" font-weight="700" fill="#FFFFFF">Erişilemez</text>
+    </g>
+
+    <!-- Oda 3: Genel Veriler -->
+    <g transform="translate(24, 300)">
+      <rect width="402" height="80" rx="14" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1" stroke-opacity="0.3" filter="url(#glow-genel)" />
+      <!-- Simge ve Başlık -->
+      <circle cx="36" cy="36" r="16" fill="#FEF3C7" />
+      <path d="M 32,32 L 40,32 M 32,36 L 40,36 M 32,40 L 38,40" stroke="#B45309" stroke-width="2" stroke-linecap="round" />
+      <text x="64" y="34" font-size="14" font-weight="700" fill="#78350F">genel-oda (Paylaşılan Genel Veriler)</text>
+      <text x="64" y="50" font-size="11" fill="#B45309" opacity="0.8">Genel Kurallar, Sözlükler, Ortak Şablonlar</text>
+    </g>
+  </g>
+
+  <!-- ALT AÇIKLAMA NOTLARI -->
+  <g transform="translate(480, 525)">
+    <circle cx="10" cy="10" r="4" fill="#EF4444" />
+    <text x="22" y="14" font-size="11" font-weight="600" fill="#475569">Güvenlik Duvarı:</text>
+    <text x="122" y="14" font-size="11" fill="#64748B">Tenant odaları şifreli anahtarlarla birbirinden mantıksal olarak izole edilmiştir.</text>
+    
+    <circle cx="10" cy="30" r="4" fill="#3B82F6" />
+    <text x="22" y="34" font-size="11" font-weight="600" fill="#475569">Veri Eşitleme:</text>
+    <text x="122" y="34" font-size="11" fill="#64748B">Agent hareketleri anlık olarak kendi tenant odasındaki belleğe işlenir.</text>
+  </g>
+
+</svg>

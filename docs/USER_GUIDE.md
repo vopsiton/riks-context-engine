@@ -4,6 +4,8 @@
 
 **Version:** 0.2.0 | **Python:** 3.10+ | **License:** AGPL-3.0
 
+![Quick start — four steps from install to query](images/quickstart-steps.png)
+
 ---
 
 ## Table of Contents

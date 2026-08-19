@@ -1,5 +1,7 @@
 # Deployment Guide 🗿
 
+![CI/CD deployment pipeline: PR → tests → build → deploy → production](images/deployment-pipeline.png)
+
 ## Local Sandbox (Docker)
 
 ```bash
