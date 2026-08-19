@@ -18,7 +18,7 @@ import os
 import sys
 from typing import Any
 
-from .handlers import create_handler
+from .handlers import TenantIsolationError, create_handler
 from .protocol import (
     ERR_INTERNAL_ERROR,
     ERR_INVALID_PARAMS,
@@ -107,7 +107,10 @@ class MCPServer:
         if not handler_method or not callable(handler_method):
             raise JsonRpcError(ERR_METHOD_NOT_FOUND, f"No handler for tool: {tool_name}")
 
-        result = handler_method(tool_args)
+        try:
+            result = handler_method(tool_args)
+        except TenantIsolationError as exc:
+            raise JsonRpcError(ERR_INVALID_PARAMS, str(exc)) from exc
 
         return {
             "content": [

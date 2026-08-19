@@ -42,15 +42,17 @@ def _memory_store_paths() -> tuple[str, str, str]:
 
     RIKS_TENANT_ID empty/absent → default tenant (shared legacy paths).
     """
-    sem_db, epi_json, proc_json = _store_paths()
-    tenant = os.environ.get("RIKS_TENANT_ID", "").strip()
-    if not tenant:
+    from riks_context_engine.multi_tenant import tenant_store_paths
+
+    data_dir = os.environ.get("RIKS_DATA_DIR", "data")
+    tenant = os.environ.get("RIKS_TENANT_ID", "").strip() or None
+    sem_db, epi_json, proc_json = tenant_store_paths(data_dir, tenant)
+    if tenant:
         return sem_db, epi_json, proc_json
-    base = os.path.join(os.environ.get("RIKS_DATA_DIR", "data"), "tenants", tenant)
     return (
-        os.path.join(base, "semantic.db"),
-        os.path.join(base, "episodic.json"),
-        os.path.join(base, "procedural.json"),
+        os.environ.get("RIKS_SEMANTIC_DB", sem_db),
+        os.environ.get("RIKS_EPISODIC_JSON", epi_json),
+        os.environ.get("RIKS_PROCEDURAL_JSON", proc_json),
     )
 
 

@@ -1,11 +1,13 @@
 """Tests for memory module."""
 
+import multiprocessing
 import os
 import tempfile
 
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.procedural import ProceduralMemory
 from riks_context_engine.memory.semantic import SemanticMemory
+from riks_context_engine.multi_tenant import tenant_store_paths
 
 
 def _temp_json_path():
@@ -324,3 +326,90 @@ class TestProceduralMemoryExtended:
         proc = list(mem2.procedures.values())[0]
         assert proc.name == "Persisted Proc"
         assert proc.steps == ["step_a", "step_b"]
+
+
+# ---------------------------------------------------------------------------
+# Cross-process concurrency (#108)
+# ---------------------------------------------------------------------------
+
+
+def _semantic_writer(db_path: str, prefix: str, count: int) -> None:
+    """Worker: write `count` entries to the semantic DB."""
+    mem = SemanticMemory(db_path=db_path)
+    for i in range(count):
+        mem.add(subject=f"{prefix}_{i}", predicate="test", object="value")
+
+
+class TestCrossProcessConcurrency:
+    """4 processes x 25 writes → 100 entries, no data loss."""
+
+    def test_concurrent_semantic_writes(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        try:
+            procs = []
+            for i in range(4):
+                p = multiprocessing.Process(
+                    target=_semantic_writer,
+                    args=(db_path, f"proc{i}", 25),
+                )
+                procs.append(p)
+                p.start()
+            for p in procs:
+                p.join(timeout=30)
+            mem = SemanticMemory(db_path=db_path)
+            entries = mem.query()
+            assert len(entries) == 100, f"Expected 100 entries, got {len(entries)}"
+        finally:
+            try:
+                os.unlink(db_path)
+            except OSError:
+                pass
+
+
+# ---------------------------------------------------------------------------
+# tenant_store_paths regression (#108)
+# ---------------------------------------------------------------------------
+
+
+class TestTenantStorePaths:
+    """Verify tenant_store_paths helper produces correct paths."""
+
+    def test_legacy_paths_no_tenant(self):
+        sem, epi, proc = tenant_store_paths("data", None)
+        assert sem == os.path.join("data", "semantic.db")
+        assert epi == os.path.join("data", "episodic.json")
+        assert proc == os.path.join("data", "procedural.json")
+
+    def test_legacy_paths_empty_tenant(self):
+        sem, epi, proc = tenant_store_paths("data", "")
+        assert sem == os.path.join("data", "semantic.db")
+
+    def test_tenant_scoped_paths(self):
+        sem, epi, proc = tenant_store_paths("data", "agentX")
+        assert sem == os.path.join("data", "tenants", "agentX", "semantic.db")
+        assert epi == os.path.join("data", "tenants", "agentX", "episodic.json")
+        assert proc == os.path.join("data", "tenants", "agentX", "procedural.json")
+
+    def test_cli_regression_env_override_without_tenant(self, monkeypatch):
+        """Env var overrides apply only when no tenant is set."""
+        monkeypatch.setenv("RIKS_SEMANTIC_DB", "/custom/sem.db")
+        monkeypatch.setenv("RIKS_EPISODIC_JSON", "/custom/epi.json")
+        monkeypatch.setenv("RIKS_PROCEDURAL_JSON", "/custom/proc.json")
+        monkeypatch.delenv("RIKS_TENANT_ID", raising=False)
+        from riks_context_engine.cli.main import _memory_store_paths
+
+        sem, epi, proc = _memory_store_paths()
+        assert sem == "/custom/sem.db"
+        assert epi == "/custom/epi.json"
+        assert proc == "/custom/proc.json"
+
+    def test_cli_regression_tenant_ignores_env_override(self, monkeypatch):
+        """When tenant is set, env var overrides are ignored."""
+        monkeypatch.setenv("RIKS_SEMANTIC_DB", "/custom/sem.db")
+        monkeypatch.setenv("RIKS_TENANT_ID", "myTenant")
+        from riks_context_engine.cli.main import _memory_store_paths
+
+        sem, _, _ = _memory_store_paths()
+        assert "/custom/" not in sem
+        assert "myTenant" in sem

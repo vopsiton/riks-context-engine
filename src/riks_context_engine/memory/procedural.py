@@ -1,9 +1,13 @@
 """Procedural memory - skills, workflows, how-to knowledge."""
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+from filelock import FileLock
 
 
 @dataclass
@@ -30,38 +34,46 @@ class ProceduralMemory:
 
     def __init__(self, storage_path: str | None = None):
         self.storage_path = storage_path or "data/procedural.json"
+        self._is_memory = self.storage_path == ":memory:"
         self._procedures: dict[str, Procedure] = {}
+        if not self._is_memory:
+            self._lock = FileLock(f"{self.storage_path}.lock", timeout=10)
         self._load()
 
     def _load(self) -> None:
         """Load procedures from disk."""
+        if self._is_memory:
+            return
         path = Path(self.storage_path)
-        if path.exists():
-            try:
-                data = json.loads(path.read_text())
-                for d in data.values():
-                    created = d["created_at"]
-                    if isinstance(created, str):
-                        created = datetime.fromisoformat(created)
-                    last_used = d["last_used"]
-                    if isinstance(last_used, str):
-                        last_used = datetime.fromisoformat(last_used)
-                    self._procedures[d["id"]] = Procedure(
-                        id=d["id"],
-                        name=d["name"],
-                        description=d["description"],
-                        steps=d.get("steps", []),
-                        created_at=created,
-                        last_used=last_used,
-                        use_count=d.get("use_count", 0),
-                        success_rate=d.get("success_rate", 1.0),
-                        tags=d.get("tags", []),
-                    )
-            except (json.JSONDecodeError, KeyError, ValueError):
-                pass
+        with self._lock:
+            if path.exists():
+                try:
+                    data = json.loads(path.read_text())
+                    for d in data.values():
+                        created = d["created_at"]
+                        if isinstance(created, str):
+                            created = datetime.fromisoformat(created)
+                        last_used = d["last_used"]
+                        if isinstance(last_used, str):
+                            last_used = datetime.fromisoformat(last_used)
+                        self._procedures[d["id"]] = Procedure(
+                            id=d["id"],
+                            name=d["name"],
+                            description=d["description"],
+                            steps=d.get("steps", []),
+                            created_at=created,
+                            last_used=last_used,
+                            use_count=d.get("use_count", 0),
+                            success_rate=d.get("success_rate", 1.0),
+                            tags=d.get("tags", []),
+                        )
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    pass
 
     def _save(self) -> None:
         """Persist procedures to disk."""
+        if self._is_memory:
+            return
         Path(self.storage_path).parent.mkdir(parents=True, exist_ok=True)
         data = {
             pid: {
@@ -77,7 +89,21 @@ class ProceduralMemory:
             }
             for pid, p in self._procedures.items()
         }
-        Path(self.storage_path).write_text(json.dumps(data, indent=2))
+        with self._lock:
+            fd, tmp = tempfile.mkstemp(
+                dir=str(Path(self.storage_path).parent), suffix=".tmp"
+            )
+            try:
+                os.write(fd, json.dumps(data, indent=2).encode())
+                os.close(fd)
+                fd = -1
+                os.replace(tmp, self.storage_path)
+            except BaseException:
+                if fd >= 0:
+                    os.close(fd)
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
 
     def store(
         self,

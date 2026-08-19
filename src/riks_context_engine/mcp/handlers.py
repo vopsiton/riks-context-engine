@@ -5,15 +5,30 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from pydantic import BaseModel, Field, ValidationError
+
 from ..context.manager import ContextWindowManager
 from ..memory import EpisodicMemory, ProceduralMemory, SemanticMemory
-from ..multi_tenant import TenantContextRegistry, TenantValidationError, validate_tenant_id
+from ..multi_tenant import (
+    TenantContextRegistry,
+    TenantMemoryRegistry,
+    TenantValidationError,
+    validate_tenant_id,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class TenantIsolationError(Exception):
     """Raised when a tool call fails tenant validation/isolation."""
+
+
+class SemanticWriteParams(BaseModel, extra="forbid"):
+    tenant_id: str
+    subject: str = Field(min_length=1, max_length=512)
+    predicate: str = Field(min_length=1, max_length=512)
+    object: str | None = Field(default=None, max_length=4096)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
 class ToolHandler:
@@ -34,20 +49,27 @@ class ToolHandler:
         self._procedural = procedural_memory
         self._context = context_manager
         self._tenant_registry = tenant_registry or TenantContextRegistry()
+        self._memory_registry = TenantMemoryRegistry(data_dir=self.data_dir)
 
     # -- Lazy initialisers ---------------------------------------------------
 
-    def _get_episodic(self) -> EpisodicMemory:
+    def _get_episodic(self, tenant_id: str | None = None) -> EpisodicMemory:
+        if tenant_id:
+            return self._memory_registry.get_episodic(tenant_id)
         if self._episodic is None:
             self._episodic = EpisodicMemory(f"{self.data_dir}/episodic.json")
         return self._episodic
 
-    def _get_semantic(self) -> SemanticMemory:
+    def _get_semantic(self, tenant_id: str | None = None) -> SemanticMemory:
+        if tenant_id:
+            return self._memory_registry.get_semantic(tenant_id)
         if self._semantic is None:
             self._semantic = SemanticMemory(f"{self.data_dir}/semantic.db")
         return self._semantic
 
-    def _get_procedural(self) -> ProceduralMemory:
+    def _get_procedural(self, tenant_id: str | None = None) -> ProceduralMemory:
+        if tenant_id:
+            return self._memory_registry.get_procedural(tenant_id)
         if self._procedural is None:
             self._procedural = ProceduralMemory(f"{self.data_dir}/procedural.json")
         return self._procedural
@@ -111,6 +133,38 @@ class ToolHandler:
         except Exception as exc:
             logger.error("semantic_query failed: %s", exc)
             raise
+
+    def semantic_write(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Write a semantic triple to tenant-scoped memory (#108)."""
+        try:
+            validated = SemanticWriteParams(**params)
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            field = ".".join(str(loc) for loc in first["loc"])
+            raise TenantIsolationError(
+                f"Validation failed on field '{field}': {first['msg']}"
+            ) from exc
+
+        try:
+            tenant_id = validate_tenant_id(validated.tenant_id)
+        except TenantValidationError as exc:
+            raise TenantIsolationError(str(exc)) from exc
+
+        semantic = self._get_semantic(tenant_id)
+        entry = semantic.add(
+            subject=validated.subject,
+            predicate=validated.predicate,
+            object=validated.object,
+            confidence=validated.confidence,
+        )
+        return {
+            "id": entry.id,
+            "subject": entry.subject,
+            "predicate": entry.predicate,
+            "object": entry.object,
+            "confidence": entry.confidence,
+            "status": "written",
+        }
 
     def procedural_get(self, params: dict[str, Any]) -> dict[str, Any]:
         """Get procedural memory entries by tag or ID."""
