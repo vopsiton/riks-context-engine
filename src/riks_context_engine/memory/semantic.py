@@ -54,6 +54,8 @@ class SemanticMemory:
     def _init_db(self) -> None:
         """Initialize the SQLite schema."""
         with self._conn() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS semantic_entries (
                     id TEXT PRIMARY KEY,
@@ -189,20 +191,17 @@ class SemanticMemory:
 
     def recall(self, query: str) -> list[SemanticEntry]:
         """Semantic search across knowledge using keyword matching."""
-        q = query.lower()
+        pattern = f"%{query}%"
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM semantic_entries").fetchall()
-        matches = []
-        for r in rows:
-            entry = self._row_to_entry(r)
-            if (
-                q in entry.subject.lower()
-                or q in entry.predicate.lower()
-                or (entry.object and q in entry.object.lower())
-            ):
-                matches.append(entry)
-        return matches
+            rows = conn.execute(
+                """SELECT * FROM semantic_entries
+                   WHERE subject LIKE ? COLLATE NOCASE
+                      OR predicate LIKE ? COLLATE NOCASE
+                      OR object LIKE ? COLLATE NOCASE""",
+                (pattern, pattern, pattern),
+            ).fetchall()
+        return [self._row_to_entry(r) for r in rows]
 
     def to_memory_entry(self) -> MemoryEntry:
         """Convert this SemanticEntry to a generic MemoryEntry.

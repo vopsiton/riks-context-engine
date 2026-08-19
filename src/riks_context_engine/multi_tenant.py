@@ -20,10 +20,14 @@ isolation + header validation.
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 
 from riks_context_engine.context.manager import ContextWindowManager
+from riks_context_engine.memory.episodic import EpisodicMemory
+from riks_context_engine.memory.procedural import ProceduralMemory
+from riks_context_engine.memory.semantic import SemanticMemory
 
 #: Header carrying the tenant identifier on HTTP requests.
 TENANT_HEADER = "X-Tenant-Id"
@@ -73,6 +77,26 @@ def assert_same_tenant(requested: str | None, record_tenant: str, field: str = "
         raise TenantValidationError(f"{field} does not belong to this tenant")
 
 
+def tenant_store_paths(data_dir: str, tenant_id: str | None) -> tuple[str, str, str]:
+    """Return (semantic_db, episodic_json, procedural_json) for a tenant.
+
+    When ``tenant_id`` is None or empty, returns default (legacy) paths.
+    """
+    tenant = (tenant_id or "").strip()
+    if not tenant:
+        return (
+            os.path.join(data_dir, "semantic.db"),
+            os.path.join(data_dir, "episodic.json"),
+            os.path.join(data_dir, "procedural.json"),
+        )
+    base = os.path.join(data_dir, "tenants", tenant)
+    return (
+        os.path.join(base, "semantic.db"),
+        os.path.join(base, "episodic.json"),
+        os.path.join(base, "procedural.json"),
+    )
+
+
 class TenantContextRegistry:
     """Per-tenant :class:`ContextWindowManager` instances.
 
@@ -103,3 +127,45 @@ class TenantContextRegistry:
     def has(self, tenant_id: str) -> bool:
         with self._lock:
             return tenant_id in self._managers
+
+
+class TenantMemoryRegistry:
+    """Per-tenant memory store instances (semantic, episodic, procedural).
+
+    Same structural isolation as TenantContextRegistry: each tenant gets
+    its own store instances, backed by tenant-scoped file paths.
+    """
+
+    def __init__(self, data_dir: str = "data") -> None:
+        self._data_dir = data_dir
+        self._semantic: dict[str, SemanticMemory] = {}
+        self._episodic: dict[str, EpisodicMemory] = {}
+        self._procedural: dict[str, ProceduralMemory] = {}
+        self._lock = threading.Lock()
+
+    def get_semantic(self, tenant_id: str) -> SemanticMemory:
+        with self._lock:
+            mem = self._semantic.get(tenant_id)
+            if mem is None:
+                sem_db, _, _ = tenant_store_paths(self._data_dir, tenant_id)
+                mem = SemanticMemory(db_path=sem_db)
+                self._semantic[tenant_id] = mem
+            return mem
+
+    def get_episodic(self, tenant_id: str) -> EpisodicMemory:
+        with self._lock:
+            mem = self._episodic.get(tenant_id)
+            if mem is None:
+                _, epi_json, _ = tenant_store_paths(self._data_dir, tenant_id)
+                mem = EpisodicMemory(storage_path=epi_json)
+                self._episodic[tenant_id] = mem
+            return mem
+
+    def get_procedural(self, tenant_id: str) -> ProceduralMemory:
+        with self._lock:
+            mem = self._procedural.get(tenant_id)
+            if mem is None:
+                _, _, proc_json = tenant_store_paths(self._data_dir, tenant_id)
+                mem = ProceduralMemory(storage_path=proc_json)
+                self._procedural[tenant_id] = mem
+            return mem

@@ -145,6 +145,40 @@ TOOL_SCHEMAS = {
             "required": ["tenant_id"],
         },
     },
+    "semantic_write": {
+        "name": "semantic_write",
+        "description": "Write a semantic knowledge triple (subject-predicate-object) to tenant-scoped memory.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tenant_id": {
+                    "type": "string",
+                    "description": "Tenant id (X-Tenant-Id); required for isolation",
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Subject of the knowledge triple",
+                },
+                "predicate": {
+                    "type": "string",
+                    "description": "Predicate/relation of the knowledge triple",
+                },
+                "object": {
+                    "type": "string",
+                    "description": "Object of the knowledge triple (optional)",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Confidence 0.0-1.0 (default 1.0)",
+                    "default": 1.0,
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                },
+            },
+            "required": ["tenant_id", "subject", "predicate"],
+            "additionalProperties": False,
+        },
+    },
     "health_check": {
         "name": "health_check",
         "description": "Check if the MCP server is healthy and responsive.",
