@@ -70,11 +70,22 @@ jobs:
 
       - name: Check PR template
         run: |
-          # Verify PR description length
-          body_length=$(echo "${{ github.event.pull_request.body }}" | wc -c)
+          # Verify PR description length.
+          # #140: the body is passed via env + printf '%s' (literal
+          # transfer) so quotes, newlines, $ and backticks in the PR body
+          # cannot break the shell. The previous inline
+          # `echo "${{ github.event.pull_request.body }}"` broke on any PR
+          # body containing a single quote (e.g. "Rik's", "don't"). A
+          # heredoc (<<'EOF_BODY') was also tried but is NOT safe: the
+          # delimiter line must start at column 0, while GitHub Actions
+          # indents the run: | block (YAML block scalar) — so the
+          # delimiter is never recognized. env + printf is the robust fix.
+          body_length=$(printf '%s' "$PR_BODY" | wc -c)
           if [ "$body_length" -lt 50 ]; then
             echo "WARNING: PR description is very short. Please add details."
           fi
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
 
   # ===== Automate Project Board ===== #
   sync-project:
