@@ -232,6 +232,32 @@ def main() -> None:
     )
 
     data_dir = os.environ.get("RIKS_DATA_DIR", "data")
+
+    if not os.environ.get("RIKS_SKIP_INTEGRITY_CHECK", "").strip():
+        from riks_context_engine.integrity import check_data_integrity
+
+        problems = check_data_integrity(data_dir)
+        if problems:
+            print(
+                f"riks-mcp: data integrity check failed — {len(problems)} problem(s):",
+                file=sys.stderr,
+            )
+            for p in problems:
+                print(f"  [{p.kind}] {p.path}: {p.detail}", file=sys.stderr)
+            backup_dir = os.path.join(data_dir, "backups")
+            if os.path.isdir(backup_dir):
+                snapshots = sorted(os.listdir(backup_dir), reverse=True)
+                if snapshots:
+                    print(
+                        f"hint: restore from {os.path.join(backup_dir, snapshots[0])}",
+                        file=sys.stderr,
+                    )
+            print(
+                "set RIKS_SKIP_INTEGRITY_CHECK=1 to bypass this check",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     server = MCPServer(data_dir=data_dir)
 
     while True:
