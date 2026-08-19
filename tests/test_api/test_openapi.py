@@ -56,6 +56,45 @@ class TestSpecExposure:
         assert spec["info"]["title"] == "Rik's Context Engine API"
         assert spec["info"]["version"]
 
+    def test_spec_urls_pinned_in_app(self, client: TestClient):
+        # #123 turn 2: openapi_url/docs_url/redoc_url are pinned explicitly on
+        # the app (asserted via the served artifacts + module-level constants).
+        from riks_context_engine.api.server import (
+            DOCS_URL,
+            OPENAPI_URL,
+            REDOC_URL,
+        )
+        from riks_context_engine.api.server import (
+            app as fastapi_app,
+        )
+
+        assert fastapi_app.openapi_url == OPENAPI_URL == "/openapi.json"
+        assert fastapi_app.docs_url == DOCS_URL == "/docs"
+        assert fastapi_app.redoc_url == REDOC_URL == "/redoc"
+        # The pinned URLs actually serve.
+        assert client.get(OPENAPI_URL).status_code == 200
+        assert client.get(DOCS_URL).status_code == 200
+        assert client.get(REDOC_URL).status_code == 200
+
+    def test_health_and_models_have_field_examples(self, spec):
+        """#123: every v1 endpoint needs a sample payload; health/models use
+        Field(examples=[...]) on the response model → `examples` shows up on
+        the 200 response content."""
+        for path, prop in (("/health", "status"), ("/models", "models")):
+            resp = spec["paths"][path]["get"]["responses"]["200"]
+            schema = resp["content"]["application/json"]["schema"]
+            # Resolve $ref (FastAPI inline schema refs) — the component has the
+            # field with the examples.
+            if "$ref" in schema:
+                ref = schema["$ref"].rsplit("/", 1)[-1]
+                comp = spec["components"]["schemas"][ref]
+            else:
+                comp = schema
+            assert prop in comp["properties"], f"{path}: {prop} missing from schema"
+            assert "examples" in comp["properties"][prop], (
+                f"{path}: {prop} has no examples in OpenAPI spec"
+            )
+
 
 class TestEndpointCoverage:
     def test_all_v1_endpoints_in_spec(self, spec):
