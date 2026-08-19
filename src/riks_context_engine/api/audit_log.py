@@ -289,5 +289,3 @@ def reset_registry() -> None:
     """Drop all cached stores (test helper)."""
     with _registry_lock:
         _registry.clear()
-
-
