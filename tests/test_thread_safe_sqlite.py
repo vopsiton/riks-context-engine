@@ -178,10 +178,6 @@ class TestThreadSafeSQLite:
 
     # ── AC-51-02: WAL mode enabled ───────────────────────────────────────
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="feature gap: #51 WAL mode + write lock never merged to master (commits edd1617/3009bfd on unmerged branches); auto-passes when #51 lands",
-    )
     def test_wal_mode_is_enabled(self):
         """Verify WAL journal mode is enabled on the database."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
@@ -200,10 +196,6 @@ class TestThreadSafeSQLite:
 
         assert journal_mode.upper() == "WAL", f"Expected WAL mode, got: {journal_mode}"
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="feature gap: #51 WAL mode + write lock never merged to master (commits edd1617/3009bfd on unmerged branches); auto-passes when #51 lands",
-    )
     def test_wal_mode_persists_after_write(self):
         """WAL mode should remain enabled even after many writes."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:

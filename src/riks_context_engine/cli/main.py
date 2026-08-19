@@ -42,15 +42,17 @@ def _memory_store_paths() -> tuple[str, str, str]:
 
     RIKS_TENANT_ID empty/absent → default tenant (shared legacy paths).
     """
-    sem_db, epi_json, proc_json = _store_paths()
-    tenant = os.environ.get("RIKS_TENANT_ID", "").strip()
-    if not tenant:
+    from riks_context_engine.multi_tenant import tenant_store_paths
+
+    data_dir = os.environ.get("RIKS_DATA_DIR", "data")
+    tenant = os.environ.get("RIKS_TENANT_ID", "").strip() or None
+    sem_db, epi_json, proc_json = tenant_store_paths(data_dir, tenant)
+    if tenant:
         return sem_db, epi_json, proc_json
-    base = os.path.join(os.environ.get("RIKS_DATA_DIR", "data"), "tenants", tenant)
     return (
-        os.path.join(base, "semantic.db"),
-        os.path.join(base, "episodic.json"),
-        os.path.join(base, "procedural.json"),
+        os.environ.get("RIKS_SEMANTIC_DB", sem_db),
+        os.environ.get("RIKS_EPISODIC_JSON", epi_json),
+        os.environ.get("RIKS_PROCEDURAL_JSON", proc_json),
     )
 
 
@@ -426,37 +428,6 @@ def cmd_reflect(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_doctor() -> int:
-    """Check data integrity; exit 0 if clean, exit 1 if corrupt."""
-    data_dir = os.environ.get("RIKS_DATA_DIR", "data")
-
-    from riks_context_engine.integrity import check_data_integrity
-
-    problems = check_data_integrity(data_dir)
-
-    if not problems:
-        print("all data files OK")
-        return 0
-
-    print(f"found {len(problems)} problem(s):\n", file=sys.stderr)
-    for p in problems:
-        print(f"  [{p.kind}] {p.path}: {p.detail}", file=sys.stderr)
-
-    backup_dir = Path(data_dir) / "backups"
-    if backup_dir.is_dir():
-        snapshots = sorted(
-            [d for d in backup_dir.iterdir() if d.is_dir()],
-            key=lambda d: d.name,
-            reverse=True,
-        )
-        if snapshots:
-            print(
-                f"\nhint: latest backup available at {snapshots[0]}",
-                file=sys.stderr,
-            )
-    return 1
-
-
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="riks",
@@ -520,10 +491,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to JSON transcript ([{role, content}, ...]); falls back to context window content",
     )
-
-    # Doctor command
-    sub.add_parser("doctor", help="Check data integrity")
-
     return parser
 
 
@@ -576,9 +543,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "reflect":
         return cmd_reflect(args)
-
-    if args.command == "doctor":
-        return cmd_doctor()
 
     print(f"not implemented yet: riks {args.command} {getattr(args, 'action', '') or ''}".strip())
     return 1
