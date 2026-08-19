@@ -64,20 +64,28 @@ def _call(server: MCPServer, tool_name: str, args: dict[str, Any]) -> dict[str, 
 
 class TestTaskExecuteSuccess:
     def test_echo_goal(self, server: MCPServer) -> None:
-        resp = _call(server, "task_execute", {
-            "tenant_id": "t-test",
-            "goal": "echo: merhaba",
-        })
+        resp = _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "t-test",
+                "goal": "echo: merhaba",
+            },
+        )
         assert "result" in resp
         content = json.loads(resp["result"]["content"][0]["text"])
         assert content["status"] == "done"
         assert "merhaba" in content["result"]
 
     def test_default_tool_no_colon(self, server: MCPServer) -> None:
-        resp = _call(server, "task_execute", {
-            "tenant_id": "t-test",
-            "goal": "plain text goal",
-        })
+        resp = _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "t-test",
+                "goal": "plain text goal",
+            },
+        )
         content = json.loads(resp["result"]["content"][0]["text"])
         assert content["status"] == "done"
         assert "plain text goal" in content["result"]
@@ -85,31 +93,47 @@ class TestTaskExecuteSuccess:
 
 class TestTaskExecuteErrors:
     def test_unknown_tool(self, server: MCPServer) -> None:
-        resp = _call(server, "task_execute", {
-            "tenant_id": "t-test",
-            "goal": "nonexistent_tool: x",
-        })
+        resp = _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "t-test",
+                "goal": "nonexistent_tool: x",
+            },
+        )
         assert resp["error"]["code"] == ERR_INVALID_PARAMS
         assert "unknown tool" in resp["error"]["message"]
 
     def test_empty_goal(self, server: MCPServer) -> None:
-        resp = _call(server, "task_execute", {
-            "tenant_id": "t-test",
-            "goal": "",
-        })
+        resp = _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "t-test",
+                "goal": "",
+            },
+        )
         assert resp["error"]["code"] == ERR_INVALID_PARAMS
 
     def test_missing_tenant_id(self, server: MCPServer) -> None:
-        resp = _call(server, "task_execute", {
-            "goal": "echo: hi",
-        })
+        resp = _call(
+            server,
+            "task_execute",
+            {
+                "goal": "echo: hi",
+            },
+        )
         assert resp["error"]["code"] == ERR_INVALID_PARAMS
 
     def test_invalid_tenant_id(self, server: MCPServer) -> None:
-        resp = _call(server, "task_execute", {
-            "tenant_id": "",
-            "goal": "echo: hi",
-        })
+        resp = _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "",
+                "goal": "echo: hi",
+            },
+        )
         assert resp["error"]["code"] == ERR_INVALID_PARAMS
 
 
@@ -122,11 +146,15 @@ class TestTaskExecuteTimeout:
         server.handler._tool_registry = registry
 
         t0 = time.monotonic()
-        resp = _call(server, "task_execute", {
-            "tenant_id": "t-timeout",
-            "goal": "slow: x",
-            "timeout": 1,
-        })
+        resp = _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "t-timeout",
+                "goal": "slow: x",
+                "timeout": 1,
+            },
+        )
         elapsed = time.monotonic() - t0
 
         content = json.loads(resp["result"]["content"][0]["text"])
@@ -141,31 +169,43 @@ class TestTaskExecuteTimeout:
         registry.register(SlowTool())
         server.handler._tool_registry = registry
 
-        _call(server, "task_execute", {
-            "tenant_id": "t-timeout2",
-            "goal": "slow: x",
-            "timeout": 1,
-        })
+        _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "t-timeout2",
+                "goal": "slow: x",
+                "timeout": 1,
+            },
+        )
 
         ping_req = {"jsonrpc": "2.0", "id": 99, "method": "ping"}
         ping_resp = json.loads(server.dispatch(ping_req))
         assert ping_resp["result"]["pong"] is True
 
     def test_timeout_clamped_to_120(self, server: MCPServer) -> None:
-        resp = _call(server, "task_execute", {
-            "tenant_id": "t-test",
-            "goal": "echo: fast",
-            "timeout": 9999,
-        })
+        resp = _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "t-test",
+                "goal": "echo: fast",
+                "timeout": 9999,
+            },
+        )
         assert resp["error"]["code"] == ERR_INVALID_PARAMS
 
 
 class TestTaskExecuteTenantIsolation:
     def test_tenant_scoped_queue(self, server: MCPServer, tmp_path: Path) -> None:
-        _call(server, "task_execute", {
-            "tenant_id": "agentA",
-            "goal": "echo: secret",
-        })
+        _call(
+            server,
+            "task_execute",
+            {
+                "tenant_id": "agentA",
+                "goal": "echo: secret",
+            },
+        )
 
         a_tasks = tmp_path / "data" / "tenants" / "agentA" / "tasks.json"
         assert a_tasks.exists()
