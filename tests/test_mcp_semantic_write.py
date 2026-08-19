@@ -80,23 +80,17 @@ class TestSemanticWriteTenantValidation:
     def test_missing_tenant_id(self, tmp_path):
         handler = ToolHandler(data_dir=str(tmp_path))
         with pytest.raises(TenantIsolationError):
-            handler.semantic_write(
-                {"subject": "x", "predicate": "y"}
-            )
+            handler.semantic_write({"subject": "x", "predicate": "y"})
 
     def test_empty_tenant_id(self, tmp_path):
         handler = ToolHandler(data_dir=str(tmp_path))
         with pytest.raises(TenantIsolationError):
-            handler.semantic_write(
-                {"tenant_id": "", "subject": "x", "predicate": "y"}
-            )
+            handler.semantic_write({"tenant_id": "", "subject": "x", "predicate": "y"})
 
     def test_path_traversal_tenant_id(self, tmp_path):
         handler = ToolHandler(data_dir=str(tmp_path))
         with pytest.raises(TenantIsolationError):
-            handler.semantic_write(
-                {"tenant_id": "../etc", "subject": "x", "predicate": "y"}
-            )
+            handler.semantic_write({"tenant_id": "../etc", "subject": "x", "predicate": "y"})
 
 
 class TestSemanticWriteValidation:
