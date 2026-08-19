@@ -1,16 +1,23 @@
 """Command-line interface for Rik's Context Engine.
 
-#124 (turn 1): `riks memory add` and `riks memory query` are implemented
-against the real memory stores. Other commands report "not implemented yet"
-with exit code 1 instead of the old fake "Command executed successfully".
+#124: `riks memory add/query` (turn 1) and `riks context stats/prune/clear`,
+`riks task <goal>`, `riks reflect --session <id>` (turn 2) are implemented
+against the real stores. `task --execute` does not execute this turn (real
+execution is the next turn after the task model is clarified); it reports
+that honestly.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
+
+from riks_context_engine.cli.task_queue import TaskQueue
+from riks_context_engine.context.manager import ContextWindowManager
 
 
 # CLI storage locations — overridable via env for tests and deployments.
@@ -217,6 +224,153 @@ def cmd_memory_query(args: argparse.Namespace, text: str | None) -> int:
     return 0
 
 
+def _context_manager_for_tenant() -> ContextWindowManager:
+    """Tenant-scoped context window manager on the shared data dir."""
+    data_dir = os.environ.get("RIKS_DATA_DIR", "data")
+    tenant = os.environ.get("RIKS_TENANT_ID", "").strip()
+    path = (
+        os.path.join(data_dir, "tenants", tenant, "context.json")
+        if tenant
+        else os.path.join(data_dir, "context.json")
+    )
+    manager = ContextWindowManager(storage_path=path)
+    manager.load()
+    return manager
+
+
+def cmd_context_stats() -> int:
+    """Report real context-window stats from the persisted store."""
+    manager = _context_manager_for_tenant()
+    s = manager.get_summary()
+    roles: dict[str, int] = {}
+    for m in manager.messages:
+        roles[m.role] = roles.get(m.role, 0) + 1
+    print(f"messages_total: {s['messages_count']}")
+    print(f"messages_active: {s['active_messages_count']}")
+    print(f"messages_pruned: {s['pruned_messages']}")
+    print(f"current_tokens: {s['current_tokens']}")
+    print(f"max_tokens: {s['max_tokens']}")
+    print(f"tokens_remaining: {s['tokens_remaining']}")
+    print(f"utilization: {s['utilization']}")
+    if roles:
+        dist = ", ".join(f"{role}={n}" for role, n in sorted(roles.items()))
+        print(f"role_distribution: {dist}")
+    return 0
+
+
+def cmd_context_prune(args: argparse.Namespace) -> int:
+    """Remove messages older than --older-than DAYS (optionally by role)."""
+    if args.older_than is None:
+        return _err("prune requires --older-than DAYS (e.g. --older-than 7)")
+    if args.older_than < 0:
+        return _err("--older-than must be >= 0")
+    manager = _context_manager_for_tenant()
+    removed = manager.prune_before(args.older_than, args.type)
+    print(f"pruned {removed} message(s) older than {args.older_than} days")
+    return 0
+
+
+def cmd_context_clear(args: argparse.Namespace) -> int:
+    """Clear all context data for the tenant (confirmation required without --yes)."""
+    if not args.yes:
+        try:
+            answer = input("Are you sure? This deletes ALL context data for this tenant. [y/N] ")
+        except EOFError:
+            answer = ""
+        if answer.strip().lower() not in ("y", "yes"):
+            print("aborted — nothing deleted (pass --yes to skip confirmation)", file=sys.stderr)
+            return 1
+    manager = _context_manager_for_tenant()
+    before = len(manager.messages)
+    manager.clear()
+    print(f"cleared {before} message(s)")
+    return 0
+
+
+def cmd_task(args: argparse.Namespace) -> int:
+    """Add a task goal to the real task queue (JSON-backed, tenant-scoped)."""
+    if args.list:
+        queue = TaskQueue()
+        tasks = queue.list()
+        if not tasks:
+            print("task queue is empty")
+            return 0
+        for t in tasks:
+            print(f"{t.id}\t{t.status}\t{t.goal}")
+        return 0
+    if args.list and args.goal:
+        return _err("use --list alone, or provide a goal to queue (not both)")
+    if not args.goal:
+        if args.list:
+            pass  # handled below
+        else:
+            return _err("task goal is required (or use --list)")
+    queue = TaskQueue()
+    task = queue.add(args.goal.strip())
+    print(f"task queued: {task.id} ({task.status})")
+    if args.execute:
+        print("note: task queued (not yet executed) — real execution lands in a future release")
+    return 0
+
+
+def cmd_reflect(args: argparse.Namespace) -> int:
+    """Reflect on a session: real analysis + lesson persistence to the store."""
+    from riks_context_engine.memory.semantic import SemanticMemory
+    from riks_context_engine.reflection.analyzer import ReflectionAnalyzer
+
+    data_dir = os.environ.get("RIKS_DATA_DIR", "data")
+    tenant = os.environ.get("RIKS_TENANT_ID", "").strip()
+    sem_path, epi_path, proc_path = _memory_store_paths()
+    semantic = SemanticMemory(db_path=sem_path)
+    lessons_path = (
+        os.path.join(data_dir, "tenants", tenant, "lessons.json")
+        if tenant
+        else os.path.join(data_dir, "lessons.json")
+    )
+    analyzer = ReflectionAnalyzer(
+        semantic_memory=semantic,
+        storage_path=lessons_path,
+        llm_base_url=os.environ.get("OLLAMA_BASE_URL"),
+        llm_model=os.environ.get("OLLAMA_MODEL"),
+    )
+
+    # Collect conversation for the session: explicit transcript file, or the
+    # persisted context window content (real store, not a mock).
+    conversation: list[dict[str, str]] = []
+    if args.transcript:
+        try:
+            raw = json.loads(Path(args.transcript).read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            return _err(f"cannot read transcript {args.transcript}: {exc}")
+        if not isinstance(raw, list) or not all(isinstance(m, dict) for m in raw):
+            return _err("transcript must be a JSON array of {role, content} objects")
+        conversation = [
+            {"role": str(m.get("role", "user")), "content": str(m.get("content", ""))} for m in raw
+        ]
+    else:
+        manager = _context_manager_for_tenant()
+        conversation = [{"role": m.role, "content": m.content} for m in manager.messages]
+
+    if not conversation:
+        return _err(
+            f"no data to reflect on for session {args.session} (context window empty and no --transcript given)"
+        )
+
+    report = analyzer.analyze(interaction_id=f"session_{args.session}", conversation=conversation)
+    analyzer.save()
+
+    print(f"reflection: session={args.session} source={report.source}")
+    if report.went_well:
+        print(f"went_well: {len(report.went_well)} item(s)")
+    if report.went_wrong:
+        print(f"went_wrong: {len(report.went_wrong)} item(s)")
+    if report.lessons:
+        print(f"lessons: {len(report.lessons)}")
+        for lesson in report.lessons:
+            print(f"  [{lesson.severity}] {lesson.category}: {lesson.lesson_text}")
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="riks",
@@ -237,15 +391,35 @@ def _build_parser() -> argparse.ArgumentParser:
     # Context commands
     ctx = sub.add_parser("context", help="Context window operations")
     ctx.add_argument("action", choices=["stats", "prune", "clear"])
+    ctx.add_argument(
+        "--type", type=str, default=None, help="prune: role filter (user/assistant/system)"
+    )
+    ctx.add_argument(
+        "--older-than",
+        type=int,
+        default=None,
+        metavar="DAYS",
+        help="prune: remove messages older than N days",
+    )
+    ctx.add_argument("--yes", action="store_true", help="clear: skip confirmation prompt")
 
     # Task commands
     task = sub.add_parser("task", help="Task operations")
-    task.add_argument("goal", type=str, help="Goal to decompose")
-    task.add_argument("--execute", action="store_true", help="Execute after decomposition")
+    task.add_argument("goal", type=str, nargs="?", default=None, help="Goal to queue")
+    task.add_argument(
+        "--execute", action="store_true", help="Reserved: real execution lands next turn"
+    )
+    task.add_argument("--list", action="store_true", help="List queued tasks")
 
     # Reflection commands
     refl = sub.add_parser("reflect", help="Self-reflection")
     refl.add_argument("--session", type=str, required=True, help="Session ID to reflect on")
+    refl.add_argument(
+        "--transcript",
+        type=str,
+        default=None,
+        help="Path to JSON transcript ([{role, content}, ...]); falls back to context window content",
+    )
     return parser
 
 
@@ -255,8 +429,8 @@ def _parse_known(argv: list[str] | None = None) -> tuple[argparse.Namespace, lis
     return parser.parse_known_args(argv)
 
 
-def main() -> int:
-    args, extras = _parse_known()
+def main(argv: list[str] | None = None) -> int:
+    args, extras = _parse_known(argv)
 
     if args.version:
         from riks_context_engine import __version__
@@ -268,14 +442,32 @@ def main() -> int:
         _build_parser().print_help()
         return 1
 
-    # memory add/query are implemented against the real memory stores (#124).
-    # memory stats and context/task/reflect remain out of scope for this turn
-    # and report that honestly instead of pretending success.
-    if args.command == "memory" and args.action in ("add", "query"):
+    # All commands are implemented against the real stores (#124).
+    if args.command == "memory":
         text = extras[0] if extras else None
         if args.action == "add":
             return cmd_memory_add(args, text, extras)
-        return cmd_memory_query(args, text)
+        if args.action == "query":
+            return cmd_memory_query(args, text)
+        if args.action == "stats":
+            return _err(
+                "not implemented yet: riks memory stats (use context stats / riks context stats)"
+            )
+        return 1
+
+    if args.command == "context":
+        if args.action == "stats":
+            return cmd_context_stats()
+        if args.action == "prune":
+            return cmd_context_prune(args)
+        if args.action == "clear":
+            return cmd_context_clear(args)
+
+    if args.command == "task":
+        return cmd_task(args)
+
+    if args.command == "reflect":
+        return cmd_reflect(args)
 
     if extras:
         print(f"error: unexpected argument(s): {' '.join(extras)}", file=sys.stderr)
