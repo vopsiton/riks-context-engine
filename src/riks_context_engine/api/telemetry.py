@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from opentelemetry import metrics as otel_metrics
@@ -47,11 +48,18 @@ def setup_telemetry(service_name: str = "riks-context-engine") -> None:
     tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter(out=sys.stderr)))
     trace.set_tracer_provider(tracer_provider)
 
-    from opentelemetry.exporter.prometheus import PrometheusMetricReader
+    try:
+        from opentelemetry.exporter.prometheus import PrometheusMetricReader
 
-    _prometheus_reader = PrometheusMetricReader()
-    meter_provider = MeterProvider(resource=resource, metric_readers=[_prometheus_reader])
-    otel_metrics.set_meter_provider(meter_provider)
+        _prometheus_reader = PrometheusMetricReader()
+        meter_provider = MeterProvider(resource=resource, metric_readers=[_prometheus_reader])
+        otel_metrics.set_meter_provider(meter_provider)
+    except ImportError:
+        # opentelemetry-exporter-prometheus is optional; skip the metrics
+        # reader if it is not installed (tests, minimal environments).
+        logging.getLogger(__name__).debug(
+            "opentelemetry-exporter-prometheus not installed; Prometheus metrics disabled."
+        )
 
 
 def reset_telemetry() -> None:
@@ -95,7 +103,7 @@ def get_prometheus_output() -> str:
         return ""
     from prometheus_client import generate_latest
 
-    return generate_latest().decode("utf-8")
+    return generate_latest().decode("utf-8")  # type: ignore[no-any-return]
 
 
 # --- Convenience metric accessors (created lazily, cached) ---
