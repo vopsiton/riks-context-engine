@@ -101,9 +101,13 @@ def get_prometheus_output() -> str:
     """Return Prometheus text exposition from the in-process reader."""
     if _prometheus_reader is None:
         return ""
+    from typing import Any
+
     from prometheus_client import generate_latest
 
-    return generate_latest().decode("utf-8")  # type: ignore[no-any-return]
+    raw: Any = generate_latest()
+    text: str = raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else str(raw)
+    return text
 
 
 # --- Convenience metric accessors (created lazily, cached) ---
