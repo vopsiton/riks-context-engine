@@ -103,7 +103,7 @@ def get_prometheus_output() -> str:
         return ""
     from prometheus_client import generate_latest
 
-    return generate_latest().decode("utf-8")  # type: ignore[no-any-return, return-value]
+    return generate_latest().decode("utf-8")  # type: ignore[no-any-return]
 
 
 # --- Convenience metric accessors (created lazily, cached) ---
