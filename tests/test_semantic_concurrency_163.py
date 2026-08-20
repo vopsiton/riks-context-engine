@@ -62,23 +62,25 @@ class TestConnectionReuse:
         assert holder[0] is not main_conn
 
     def test_fd_count_stable_under_load(self, tmp_path):
-        """Sustained writes must not leak file descriptors.
+        """Sustained writes must not grow the fd count (no per-call connect).
 
         The buggy version called sqlite3.connect() per operation and
-        never closed the results: fd count grew ~1 per call until the
-        process hit its limit and writes failed with
-        'bad parameter or other API misuse'.
+        never closed the results: fd count grew ~1 per operation (the
+        fix caps it at one connection per thread). Compare with the
+        object from BEFORE the work so fixture/pytest fds are excluded.
         """
-        before = len(os.listdir(f"/proc/{os.getpid()}/fd"))
         mem = SemanticMemory(db_path=str(tmp_path / "sem.db"))
+        # Warm up the thread-local connection, then take the baseline
+        # AFTER all objects/connections from setup exist.
+        mem._connect()
+        before = len(os.listdir(f"/proc/{os.getpid()}/fd"))
         for i in range(200):
             mem.add(subject=f"s_{i}", predicate="p", object="o")
-            mem.get(f"sm_{mem.query()[0].created_at.timestamp()}") if i == 0 else None
             if i % 20 == 0:
                 mem.query(predicate="p")
         after = len(os.listdir(f"/proc/{os.getpid()}/fd"))
-        # Allow a small slack (sqlite WAL journal files); the buggy code
-        # grew by ~1 per operation (hundreds).
+        # Buggy code grew by ~1 per operation (hundreds); the fixed code
+        # reuses the thread connection (delta 0, small slack for GC).
         assert after - before <= 2, f"fd leak: {before} -> {after}"
 
     def test_cross_process_100_writes(self):
