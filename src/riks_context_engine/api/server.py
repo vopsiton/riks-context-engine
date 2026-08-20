@@ -33,6 +33,11 @@ from riks_context_engine.api.telemetry import (
     observe_request,
     setup_telemetry,
 )
+from riks_context_engine.chat_context import (
+    build_context_block,
+    build_llm_prompt,
+    remember_exchange,
+)
 from riks_context_engine.context.manager import ContextWindowManager
 from riks_context_engine.memory.episodic import EpisodicMemory
 from riks_context_engine.memory.export import (
@@ -46,6 +51,7 @@ from riks_context_engine.memory.semantic import SemanticMemory
 from riks_context_engine.multi_tenant import (
     TENANT_HEADER,
     TenantContextRegistry,
+    TenantMemoryRegistry,
     TenantValidationError,
     validate_tenant_id,
 )
@@ -64,6 +70,57 @@ class ChatResponse(BaseModel):
 _MODELS = ["gemma4-31b-it", "gemma4:31b", "qwen3.5-9b", "gemma-4-31b", "minimax-m2.7"]
 
 API_KEY = os.environ.get("API_KEY", "")
+
+
+def _default_llm_call(prompt: str, model: str) -> str:
+    """Default LLM provider call.
+
+    If a provider URL is configured (LLM_PROVIDER_URL env var), call it.
+    Otherwise, use the deterministic stub (proves the wiring in CI/staging
+    without a real LLM). The stub reads the context block and answers name
+    questions from it.
+    """
+    provider_url = os.environ.get("LLM_PROVIDER_URL", "")
+    if provider_url:
+        # Real LLM provider (e.g., Ollama, OpenAI-compatible).
+        # POST to the provider's chat/completion endpoint.
+        import urllib.request
+
+        # Try Ollama format first (/api/chat), then OpenAI-compatible.
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }
+        req = urllib.request.Request(
+            provider_url,
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read())
+                # Ollama: {"message": {"content": "..."}}
+                # OpenAI: {"choices": [{"message": {"content": "..."}}]}
+                if "message" in data:
+                    return str(data["message"].get("content", ""))
+                if "choices" in data:
+                    return str(data["choices"][0]["message"]["content"])
+                return str(data)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("LLM provider call failed: %s", e)
+            # Fall through to the stub (provider unreachable → stub).
+
+    # Deterministic stub (CI/testing/no-provider).
+    # The user message is embedded in the prompt as "User message: <text>".
+    import re
+
+    from riks_context_engine.chat_context import _stub_llm
+
+    m = re.search(r"User message: (.+)", prompt)
+    user_message = m.group(1) if m else ""
+    return _stub_llm(prompt, model, user_message)
+
 
 # ─── API Key Middleware ────────────────────────────────────────────────────────
 
@@ -318,6 +375,11 @@ def _get_context_manager() -> ContextWindowManager | None:  # noqa: F821
 
 # Module-level tenant-scoped context registry (#102)
 _tenant_registry = TenantContextRegistry()
+
+# Module-level tenant-scoped memory registry (#158: chat context wiring)
+# Each tenant gets its own SemanticMemory instance, backed by tenant-scoped
+# file paths under DATA_DIR.
+_tenant_memory_registry = TenantMemoryRegistry()
 
 
 # ─── WebSocket Context Streaming ───────────────────────────────────────────────
@@ -765,17 +827,33 @@ def list_models() -> dict[str, list[str]]:
 
 
 @app.post("/api/chat", response_model=ChatResponse, tags=["chat"])
-def chat(req: ChatRequest) -> ChatResponse:
-    """Send a chat message (echo mode until the context engine is wired in)."""
-    model = req.model or "gemma4-31b-it"
+def chat(req: ChatRequest, request: Request) -> ChatResponse:
+    """Send a chat message with context memory wiring (#158).
+
+    (a) Write: user message + assistant reply → tenant ContextWindowManager.
+    (b) Read: last N messages + semantic memory recall → prompt context.
+    LLM call: real provider if LLM_PROVIDER_URL set, deterministic stub
+    otherwise (proves the wiring without a real LLM).
+    """
+    model = req.model or "gemma4:31b"
     if model not in _MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
 
-    return ChatResponse(
-        response=f"[{model}] Mesajını aldım: {req.message!r} — "
-        "Context engine entegrasyonu yakında aktif olacak.",
-        model=model,
-    )
+    tenant_id: str = request.state.tenant_id  # set by TenantAuthMiddleware
+    ctx_mgr = _tenant_registry.get(tenant_id)
+    sem_mem = _tenant_memory_registry.get_semantic(tenant_id)
+
+    context_block = build_context_block(ctx_mgr, sem_mem, req.message)
+    prompt = build_llm_prompt(f"Model: {model}\nUser message: {req.message}", context_block)
+
+    # LLM call: real provider if configured, deterministic stub otherwise.
+    llm_call = _default_llm_call
+    reply = llm_call(prompt, model)
+
+    # (a) Write: persist the exchange for future turns.
+    remember_exchange(ctx_mgr, sem_mem, req.message, reply)
+
+    return ChatResponse(response=reply, model=model)
 
 
 @app.get("/", include_in_schema=False)
