@@ -16,13 +16,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from riks_context_engine.api.server import app, _tenant_registry, _tenant_memory_registry
+from riks_context_engine.api.server import _tenant_memory_registry, _tenant_registry, app
 
 
 @pytest.fixture(autouse=True)
 def _reset_tenants(tmp_path):
     """Fresh tenant registries per test (no cross-test leakage)."""
-    from riks_context_engine.multi_tenant import TenantContextRegistry, TenantMemoryRegistry
 
     _tenant_registry._managers.clear()
     _tenant_memory_registry._semantic.clear()
