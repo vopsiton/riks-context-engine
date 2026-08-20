@@ -61,7 +61,7 @@ class ChatResponse(BaseModel):
     model: str | None = None
 
 
-_MODELS = ["gemma4-31b-it", "qwen3.5-9b", "gemma-4-31b", "minimax-m2.7"]
+_MODELS = ["gemma4-31b-it", "gemma4:31b", "qwen3.5-9b", "gemma-4-31b", "minimax-m2.7"]
 
 API_KEY = os.environ.get("API_KEY", "")
 

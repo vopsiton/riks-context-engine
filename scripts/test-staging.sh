@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Test runner for staging environment
+# Test runner for the STAGING environment (overlay: base + staging compose,
+# API on 8001). STAGING_API_URL is read from .env.staging — the default
+# fallback is http://localhost:8001 (staging port), NOT the dev port 8000.
+#
 # Usage: ./scripts/test-staging.sh [--wait] [--report-issue N]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,27 +12,88 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
 ENV_FILE=".env.staging"
+ENV_EXAMPLE=".env.staging.example"
 RESULTS_DIR="test-results"
 
-start_staging() {
-    echo "==> Starting staging environment..."
-    if [ ! -f "$ENV_FILE" ]; then
-        echo "ERROR: $ENV_FILE not found. Copy from .env.staging.example first."
+# ── Compose resolver (plugin first, legacy fallback) ─────────────────────────
+
+resolve_compose() {
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE="docker compose"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE="docker-compose"
+    else
+        echo "ERROR: neither 'docker compose' plugin nor 'docker-compose' binary found." >&2
         exit 1
     fi
-    docker-compose -f docker-compose.yml --env-file "$ENV_FILE" up --build -d
+}
+
+# Read STAGING_API_URL from .env.staging (created from example if missing).
+# Falls back to the staging port (8001) — the previous default (8000, dev)
+# silently tested the wrong service.
+resolve_staging_api_url() {
+    if [ ! -f "$ENV_FILE" ]; then
+        if [ -f "$ENV_EXAMPLE" ]; then
+            cp "$ENV_EXAMPLE" "$ENV_FILE"
+            echo "==> Created ${ENV_FILE} from ${ENV_EXAMPLE}."
+        else
+            echo "WARNING: neither ${ENV_FILE} nor ${ENV_EXAMPLE} found." >&2
+        fi
+    fi
+    local from_file
+    from_file="$(sed -n 's/^STAGING_API_URL=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
+    STAGING_API_URL="${STAGING_API_URL:-${from_file:-http://localhost:8001}}"
+    export STAGING_API_URL
+}
+
+compose_up() {
+    $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" --profile staging up -d
+}
+
+compose_down() {
+    # --profile staging: `down` without the profile only removes profile-less
+    # services (dev/prod) and leaves the staged container running.
+    $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" --profile staging down || true
+}
+
+start_staging() {
+    resolve_compose
+    resolve_staging_api_url
+    echo "==> Starting STAGING environment (API: ${STAGING_API_URL})..."
+    # Overlay stack: base + staging (staging service, port 8001).
+    # Image: GHCR (host-arch) preferred, local build fallback (see
+    # scripts/staging.sh start_staging for the same logic).
+    if ! docker ps --format '{{.Names}}' | grep -q "^riks-context-engine-staging$"; then
+        local host_arch
+        host_arch="$(uname -m)"
+        case "$host_arch" in
+            aarch64 | arm64) host_arch="arm64" ;;
+            x86_64) host_arch="amd64" ;;
+        esac
+        local ghcr_image="ghcr.io/vopsiton/riks-context-engine:staging"
+        if ! docker pull --platform "linux/${host_arch}" "$ghcr_image" 2>/dev/null; then
+            echo "WARNING: GHCR pull failed; local build fallback."
+            if [ "$host_arch" = "arm64" ] && [ ! -f Dockerfile.arm64 ]; then
+                python3 scripts/gen_dockerfile_arm64.py > Dockerfile.arm64
+                docker build --platform linux/arm64 -f Dockerfile.arm64 -t riks-context-engine:staging .
+            else
+                $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" build staging || true
+            fi
+        fi
+    fi
+    compose_up
     echo "==> Waiting for staging to be healthy..."
     wait_health
 }
 
 wait_health() {
+    resolve_staging_api_url
     local max_attempts=30
     local attempt=1
-    local api_url="${STAGING_API_URL:-http://localhost:8000}"
 
     while [ $attempt -le $max_attempts ]; do
-        if curl -sf "$api_url/health" > /dev/null 2>&1 || curl -sf "$api_url/" > /dev/null 2>&1; then
-            echo "==> Staging is healthy (attempt $attempt/$max_attempts)"
+        if curl -sf "$STAGING_API_URL/health" > /dev/null 2>&1 || curl -sf "$STAGING_API_URL/" > /dev/null 2>&1; then
+            echo "==> Staging is healthy at ${STAGING_API_URL} (attempt $attempt/$max_attempts)"
             return 0
         fi
         echo "    Waiting for health... (attempt $attempt/$max_attempts)"
@@ -38,14 +102,15 @@ wait_health() {
     done
 
     echo "ERROR: Staging failed to become healthy after $max_attempts attempts"
-    docker-compose -f docker-compose.yml logs --tail=20
+    $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" --profile staging logs --tail=20
     exit 1
 }
 
 run_tests() {
-    echo "==> Running test suite against staging..."
+    resolve_staging_api_url
+    echo "==> Running test suite against ${STAGING_API_URL}..."
     mkdir -p "$RESULTS_DIR"
-    pytest tests/ -v --base-url="${STAGING_API_URL:-http://localhost:8000}" \
+    pytest tests/ -v --base-url="$STAGING_API_URL" \
         --junitxml="$RESULTS_DIR/staging-results.xml" \
         --html="$RESULTS_DIR/staging-report.html" --self-contained-html \
         || true
@@ -53,8 +118,9 @@ run_tests() {
 }
 
 teardown() {
+    resolve_compose
     echo "==> Tearing down staging environment..."
-    docker-compose -f docker-compose.yml --env-file "$ENV_FILE" down || true
+    compose_down
 }
 
 report_issue() {
@@ -75,8 +141,10 @@ show_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  --wait          Wait for health check only"
-    echo "  --report-issue N  Report results to issue N"
+    echo "  --report-issue N  Start staging, run tests, report to issue N"
     echo "  --help          Show this help"
+    echo ""
+    echo "STAGING_API_URL is read from $ENV_FILE (default http://localhost:8001)."
 }
 
 main() {
@@ -85,7 +153,8 @@ main() {
             wait_health
             ;;
         --report-issue)
-            teardown
+            # No teardown before start: start is idempotent (compose up -d
+            # against the running overlay is a no-op for healthy services).
             start_staging
             run_tests
             report_issue "${2:-}"
