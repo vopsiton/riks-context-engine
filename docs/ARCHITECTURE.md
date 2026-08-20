@@ -6,6 +6,8 @@
 **License:** AGPL-3.0
 **Repository:** [github.com/vopsiton/riks-context-engine](https://github.com/vopsiton/riks-context-engine)
 
+![Rik Context Engine — System Architecture](images/architecture-system.png)
+
 ---
 
 ## Table of Contents
@@ -24,6 +26,8 @@
 ---
 
 ## High-Level System Diagram
+
+![System architecture: user input flows through ContextWindowManager into three memory stores](images/architecture-system.png)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -95,6 +99,8 @@
 ---
 
 ## 3-Tier Memory Architecture
+
+![3-tier memory architecture: episodic, semantic, procedural strata with promote/demote arrows](images/memory-tiers.png)
 
 Mirrors how humans actually remember things — short-term episodic → long-term semantic → skill-based procedural.
 

@@ -2,6 +2,8 @@
 
 > In-depth looks at the features that make Rik Context Engine different.
 
+![Flat storage vs 3-tier cognition comparison](images/feature-memory-comparison.png)
+
 ---
 
 ## Feature 1: 3-Tier Memory That Actually Thinks Like You Do

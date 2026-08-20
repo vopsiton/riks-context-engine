@@ -1,103 +1,138 @@
+<div align="center">
+
+<img src="docs/assets/rik-banner.svg" alt="Rik Context Engine Banner" width="700" />
+
+<br/><br/>
+
+<img src="docs/assets/rik-mascot.svg" alt="Rik Mascot" width="140" />
+
 # Rik Context Engine 🗿
 
-> **AI Context & Memory Engine for agents that actually remember.**
+**AI agents that actually remember.**
 
 [![AGPL License](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Build Status](https://img.shields.io/badge/Status-Alpha-orange.svg)](#)
+[![Version](https://img.shields.io/badge/v0.3.0-stable-brightgreen.svg)](#)
+[![MCP Compatible](https://img.shields.io/badge/MCP-v2-blueviolet.svg)](#)
+[![All PRs Merged](https://img.shields.io/badge/PRs-5%2F5%20merged-success.svg)](#)
+[![UAT](https://img.shields.io/badge/UAT-484%20pass%20%7C%200%20fail-brightgreen.svg)](#)
 
-**Rik Context Engine** gives AI agents a persistent, hierarchical memory — so they stop forgetting and start learning.
+*Persistent, hierarchical memory for AI agents — so they stop forgetting and start learning.*
 
----
+[Quick Start](#-quick-start) · [Features](#-features) · [Architecture](#-architecture) · [Docs](docs/) · [Turkce Rehber](docs/yeni-ozellikler-rehberi.md)
 
-## The Problem
-
-Every AI session starts from scratch. Chat with an assistant today, and tomorrow it's a complete stranger who has no idea who you are, what you were working on, or what you hate.
-
-The industry keeps building bigger context windows. But bigger windows don't solve the *memory problem* — they just delay it.
-
-**Context windows ≠ Memory.**
-
-- 128K context window = you can fit a novel, not a relationship
-- Long conversations get truncated, losing the most important context
-- No differentiation between "what happened" and "what matters"
-- Zero learning across sessions
+</div>
 
 ---
 
-## The Solution: 3-Tier Human Memory Architecture
+## 🎯 The Problem
+
+Every AI session starts from scratch. Chat with an assistant today, and tomorrow it's a complete stranger.
+
+The industry keeps building bigger context windows. But bigger windows don't solve the **memory problem** — they just delay it.
+
+> **Context windows ≠ Memory.**
+>
+> - 128K context window = you can fit a novel, not a relationship
+> - Long conversations get truncated, losing the most important context
+> - No differentiation between "what happened" and "what matters"
+> - Zero learning across sessions
+
+---
+
+## 💡 The Solution: 3-Tier Human Memory Architecture
 
 Rik Context Engine mirrors how humans actually remember things:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                  Episodic Memory                         │
+│              📝 Episodic Memory                          │
 │         Session-level, short-term, high-fidelity         │
 │     "What happened in this conversation last week?"      │
-│                  (JSON file storage)                      │
 └─────────────────────────────────────────────────────────┘
                           ↓ consolidate
 ┌─────────────────────────────────────────────────────────┐
-│                  Semantic Memory                         │
+│              🧩 Semantic Memory                          │
 │         Long-term structured knowledge (SQLite)          │
-│     "What do I know about this user/project?"             │
-│             + ChromaDB vector search                       │
+│     "What do I know about this user/project?"            │
+│             + ChromaDB vector search                     │
 └─────────────────────────────────────────────────────────┘
                           ↓ proceduralize
 ┌─────────────────────────────────────────────────────────┐
-│                 Procedural Memory                         │
-│           Skills, workflows, how-to knowledge             │
-│        "How do I deploy to the production server?"        │
-│                   (JSON file storage)                     │
+│              ⚙️ Procedural Memory                        │
+│           Skills, workflows, how-to knowledge            │
+│        "How do I deploy to the production server?"       │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Core Components
-
-| Component | What it does |
-|-----------|-------------|
-| **Context Window Manager** | Intelligent pruning — scores message importance, preserves what matters, maintains coherence |
-| **3-Tier Memory** | Episodic (session) + Semantic (long-term facts) + Procedural (skills/workflows) |
-| **Knowledge Graph** | Entity relationships with semantic vector search |
-| **Task Decomposer** | Breaks complex goals into dependency-respecting task graphs |
-| **Reflection Analyzer** | Self-improvement loop — learns from mistakes, tracks patterns |
-
 ---
 
-## Features
+## ✨ Features
 
 ### 🧠 Intelligent Context Window Management
-- **Importance scoring** — Automatically scores messages based on user mentions, decisions, tool results, and new information
-- **Smart pruning** — Removes low-importance content before high-importance, never loses grounding context
+- **Importance scoring** — Automatically scores messages based on user mentions, decisions, tool results
+- **Smart pruning** — Removes low-importance content first, never loses grounding context
 - **Coherence validation** — Ensures pruned context remains logically coherent
-- **Priority tiers** — TIER_0 (protected system instructions) → TIER_3 (low-priority old messages)
+- **Priority tiers** — TIER_0 (protected) → TIER_3 (low-priority)
 
 ### 📦 3-Tier Memory System
 - **Episodic**: Session snapshots, conversation highlights, ephemeral facts
-- **Semantic**: Structured knowledge (subject→predicate→object), SQLite-backed with ChromaDB embeddings
+- **Semantic**: Structured knowledge (subject → predicate → object), SQLite + ChromaDB embeddings
 - **Procedural**: Captured skills, workflows with success rates, step-by-step instructions
 
 ### 🔗 Knowledge Graph
-- Entity + relationship model with types (PERSON, PROJECT, CONCEPT, TOOL, etc.)
+- Entity + relationship model (PERSON, PROJECT, CONCEPT, TOOL...)
 - BFS pathfinding between entities
 - Semantic vector search via Ollama embeddings
-- Relationship traversal with configurable depth
 
 ### 📋 Task Decomposition
 - Goal → executable task graph with dependency resolution
-- Parallel execution groups
-- Success criteria and rollback steps per task
-- Cycle detection and validation
+- Parallel execution groups with rollback support
 
 ### 🔄 Self-Reflection Loop
-- Post-interaction analysis identifying what went well/wrong
-- Category-tagged lessons (tool-use, context-management, task-planning, security)
-- Severity tracking (info → warning → critical)
-- Consult-before-task: checks past lessons before new work
+- Post-interaction analysis: what went well/wrong
+- Category-tagged lessons with severity tracking
+
+### 🆕 Latest: v0.3.0
+
+| Feature | What it does |
+|---------|-------------|
+| 🧠 **Shared Memory** (#108) | Multi-agent, tenant-isolated memory sharing |
+| 💾 **Backup & Doctor** (#105) | Atomic backups + `riks doctor` integrity checks |
+| ⚡ **Task Execute** (#107) | MCP tool for running goals with timeout enforcement |
+
+> 📖 [Turkce rehber: bu ozelliklerin jargonsuz anlatimi](docs/yeni-ozellikler-rehberi.md)
 
 ---
 
-## Quick Start
+## 🏗️ Architecture
+
+```
+src/riks_context_engine/
+├── memory/
+│   ├── episodic.py          # 📝 Session-level JSON store
+│   ├── semantic.py          # 🧩 SQLite + ChromaDB
+│   ├── postgres.py          # 🐘 Optional PostgreSQL backend
+│   ├── procedural.py        # ⚙️ Skills & workflows
+│   └── embedding.py         # 🔗 Ollama embedder
+├── context/
+│   └── manager.py           # 🎯 Intelligent pruning
+├── tasks/
+│   └── decomposer.py        # 📋 Goal → task graph
+├── graph/
+│   └── knowledge_graph.py   # 🔗 Entities + relationships
+├── reflection/
+│   └── analyzer.py          # 🔄 Self-improvement
+├── multi_tenant.py          # 🏢 Tenant isolation
+├── integrity.py             # 🩺 Health checks
+└── cli/
+    └── main.py              # 💻 `riks` command
+```
+
+---
+
+## 🚀 Quick Start
 
 ### Python (Local)
 
@@ -129,68 +164,34 @@ print(ctx.get_summary())
 "
 ```
 
-### Docker
+### 🐳 Docker
 
 ```bash
-# Build
-docker build -t riks-context-engine:dev .
-
-# Run with docker-compose
+# Build & run
 docker-compose up dev
 
-# Inside container
+# Verify
 docker-compose exec dev python -c "from riks_context_engine import *; print('OK')"
 ```
 
 ---
 
-## Architecture
-
-```
-src/riks_context_engine/
-├── __init__.py              # Package entry point
-├── memory/
-│   ├── base.py              # MemoryEntry schema (unified 3-tier format)
-│   ├── episodic.py          # EpisodicMemory — session-level JSON store
-│   ├── semantic.py          # SemanticMemory — SQLite + ChromaDB
-│   ├── postgres.py          # PostgresSemanticMemory — optional PostgreSQL backend
-│   ├── procedural.py        # ProceduralMemory — skills & workflows
-│   └── embedding.py         # Ollama embedder integration
-├── context/
-│   └── manager.py           # ContextWindowManager — intelligent pruning
-├── tasks/
-│   └── decomposer.py        # TaskDecomposer — goal → task graph
-├── graph/
-│   └── knowledge_graph.py   # KnowledgeGraph — entities + relationships
-├── reflection/
-│   └── analyzer.py          # ReflectionAnalyzer — self-improvement
-└── cli/
-    └── main.py              # CLI entry point (`riks` command)
-```
-
----
-
-## Storage Backends
+## 💽 Storage Backends
 
 | Tier | Storage | Why |
 |------|---------|-----|
-| Episodic | JSON file (`data/episodic.json`) | Fast writes, simple, session-scoped |
-| Semantic | SQLite (`data/semantic.db`) + ChromaDB | Relational queries + vector search |
-| Procedural | JSON file (`data/procedural.json`) | Human-readable, easy to edit |
-| Knowledge Graph | SQLite (`data/knowledge_graph.db`) | Graph queries with foreign keys |
-| Context Window | In-memory | Transient, not persisted |
+| 📝 Episodic | JSON file | Fast writes, session-scoped |
+| 🧩 Semantic | SQLite + ChromaDB | Relational queries + vector search |
+| ⚙️ Procedural | JSON file | Human-readable, easy to edit |
+| 🔗 Knowledge Graph | SQLite | Graph queries with foreign keys |
+| 🐘 Semantic (alt) | PostgreSQL | Shared, multi-process, horizontally-scaled |
 
-Semantic memory also has an optional PostgreSQL backend
-(`PostgresSemanticMemory`) for deployments that need a shared, multi-process,
-or horizontally-scaled store instead of a local SQLite file. Install with the
-`postgres` extra (`pip install riks-context-engine[postgres]`) and apply the
-schema with `POSTGRES_DSN=... python scripts/migrate_postgres.py`. It exposes
-the same `add`/`get`/`query`/`recall`/`delete` interface as `SemanticMemory`,
-so it's a drop-in swap.
+> PostgreSQL backend: `pip install riks-context-engine[postgres]`
+> Apply schema: `POSTGRES_DSN=... python scripts/migrate_postgres.py`
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 ```bash
 cp .env.example .env
@@ -205,31 +206,14 @@ cp .env.example .env
 
 ---
 
-## Development
+## 🧪 Development
 
 ```bash
-# Run tests
-pytest
-
-# Lint
-ruff check src/
-
-# Type check
-mypy src/
-
-# Pre-commit hooks
-pre-commit run --all-files
+pytest              # Run tests
+ruff check src/     # Lint
+mypy src/           # Type check
+pre-commit run --all-files  # Pre-commit hooks
 ```
-
----
-
-## License
-
-[AGPL-3.0](./LICENSE) — share the source if you build on it.
-
----
-
-*Built with 🗿 by [opsiton](https://github.com/vopsiton) for the Rik AI ecosystem.*
 
 ---
 
@@ -244,3 +228,17 @@ pre-commit run --all-files
 | **Production** | ✅ DEPLOYED |
 
 See [PROJECT_CLOSURE.md](./docs/PROJECT_CLOSURE.md) for full closure report.
+
+---
+
+## 📜 License
+
+[AGPL-3.0](./LICENSE) — share the source if you build on it.
+
+---
+
+<div align="center">
+
+*Built with 🗿 by [opsiton](https://github.com/vopsiton) for the Rik AI ecosystem.*
+
+</div>

@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="800" height="200">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1035"/>
+      <stop offset="100%" stop-color="#0f0a1e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e0aaff"/>
+      <stop offset="50%" stop-color="#c77dff"/>
+      <stop offset="100%" stop-color="#7b2cbf"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="200" fill="url(#bg)" rx="12"/>
+
+  <!-- Subtle dots -->
+  <g fill="#fff" opacity="0.06">
+    <circle cx="50" cy="30" r="1.5"/><circle cx="150" cy="170" r="1"/>
+    <circle cx="350" cy="20" r="1.2"/><circle cx="500" cy="180" r="1.5"/>
+    <circle cx="650" cy="40" r="1"/><circle cx="750" cy="160" r="1.5"/>
+  </g>
+
+  <!-- Left: Moai with brain -->
+  <g transform="translate(90, 100)">
+    <!-- Brain glow aura -->
+    <ellipse cx="0" cy="-45" rx="30" ry="22" fill="#7b2cbf" opacity="0.3" filter="url(#glow)"/>
+
+    <!-- Moai body -->
+    <path d="M-22,-20 C-28,-20 -30,-10 -29,10 L-27,50 C-26,60 -15,65 0,65 C15,65 26,60 27,50 L29,10 C30,-10 28,-20 22,-20 Z" fill="#70757a" stroke="#3c4043" stroke-width="3"/>
+    <!-- Brow -->
+    <path d="M-26,-15 C-26,-22 -15,-25 0,-25 C15,-25 26,-22 26,-15 L24,-8 C24,-5 15,-3 0,-3 C-15,-3 -24,-5 -24,-8 Z" fill="#9aa0a6" stroke="#3c4043" stroke-width="2.5"/>
+    <!-- Eyes -->
+    <ellipse cx="-9" cy="-2" rx="3.5" ry="4" fill="#1e242d"/>
+    <circle cx="-10" cy="-3.5" r="1.5" fill="#fff"/>
+    <ellipse cx="9" cy="-2" rx="3.5" ry="4" fill="#1e242d"/>
+    <circle cx="8" cy="-3.5" r="1.5" fill="#fff"/>
+    <!-- Nose -->
+    <path d="M-4,-10 L-5,20 C-5,25 5,25 5,20 L4,-10 Z" fill="#9aa0a6" stroke="#3c4043" stroke-width="2"/>
+    <!-- Mouth -->
+    <path d="M-7,32 Q0,40 7,32" fill="none" stroke="#3c4043" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Cheeks -->
+    <ellipse cx="-16" cy="12" rx="5" ry="3" fill="#f72585" opacity="0.35"/>
+    <ellipse cx="16" cy="12" rx="5" ry="3" fill="#f72585" opacity="0.35"/>
+
+    <!-- Brain -->
+    <g filter="url(#glow)">
+      <path d="M-18,-28 C-25,-28 -28,-40 -22,-48 C-25,-55 -15,-60 -8,-55 C-4,-60 4,-60 8,-55 C15,-60 25,-55 22,-48 C28,-40 25,-28 18,-28 Z" fill="url(#accent)"/>
+      <path d="M0,-58 L0,-28" stroke="#fff" stroke-width="1.5" opacity="0.6"/>
+      <path d="M-14,-38 C-10,-42 -6,-38 -8,-34" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.7"/>
+      <path d="M14,-38 C10,-42 6,-38 8,-34" stroke="#fff" stroke-width="1.5" fill="none" opacity="0.7"/>
+    </g>
+
+    <!-- Sparkles -->
+    <circle cx="-25" cy="-55" r="2" fill="#e0aaff" opacity="0.8"/>
+    <circle cx="25" cy="-52" r="1.5" fill="#38bdf8" opacity="0.7"/>
+  </g>
+
+  <!-- Center: Text -->
+  <text x="400" y="88" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="38" font-weight="800" fill="#ffffff" letter-spacing="-0.5">Rik Context Engine</text>
+  <rect x="250" y="98" width="300" height="2" rx="1" fill="url(#accent)" opacity="0.7"/>
+  <text x="400" y="128" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500" fill="#c084fc" letter-spacing="2.5" opacity="0.9">AI MEMORY THAT ACTUALLY REMEMBERS</text>
+
+  <!-- Right: Memory tier icons -->
+  <!-- Notepad (Episodic) -->
+  <g transform="translate(660, 55) rotate(-5)" opacity="0.8">
+    <rect x="-10" y="-14" width="20" height="28" rx="3" fill="#1e1b4b" stroke="#a855f7" stroke-width="1.5"/>
+    <rect x="-10" y="-14" width="20" height="6" rx="2" fill="#7c3aed" opacity="0.6"/>
+    <line x1="-5" y1="-2" x2="5" y2="-2" stroke="#a78bfa" stroke-width="1.3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="-5" y1="3" x2="5" y2="3" stroke="#a78bfa" stroke-width="1.3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="-5" y1="8" x2="2" y2="8" stroke="#a78bfa" stroke-width="1.3" stroke-linecap="round" opacity="0.7"/>
+  </g>
+
+  <!-- Database (Semantic) -->
+  <g transform="translate(710, 100)" opacity="0.85">
+    <ellipse cx="0" cy="-12" rx="12" ry="5" fill="#4c1d95" stroke="#c084fc" stroke-width="1.3"/>
+    <path d="M-12,-12 L-12,2 C-12,7 12,7 12,2 L12,-12" fill="#2e1065" stroke="#c084fc" stroke-width="1.3"/>
+    <path d="M-12,2 L-12,14 C-12,19 12,19 12,14 L12,2" fill="#1e1b4b" stroke="#c084fc" stroke-width="1.3"/>
+    <circle cx="7" cy="0" r="1" fill="#38bdf8"/>
+    <circle cx="7" cy="8" r="1" fill="#a855f7"/>
+  </g>
+
+  <!-- Gear (Procedural) -->
+  <g transform="translate(670, 148) rotate(12)" opacity="0.75">
+    <circle cx="0" cy="0" r="10" fill="#1e1b4b" stroke="#a855f7" stroke-width="1.3"/>
+    <circle cx="0" cy="0" r="4" fill="#0f0a1e" stroke="#c084fc" stroke-width="1.2"/>
+    <circle cx="0" cy="0" r="1.5" fill="#38bdf8"/>
+    <!-- Teeth -->
+    <rect x="-2" y="-14" width="4" height="5" rx="1" fill="#a855f7"/>
+    <rect x="-2" y="9" width="4" height="5" rx="1" fill="#a855f7"/>
+    <rect x="-14" y="-2" width="5" height="4" rx="1" fill="#a855f7"/>
+    <rect x="9" y="-2" width="5" height="4" rx="1" fill="#a855f7"/>
+  </g>
+
+  <!-- Connection lines between icons -->
+  <path d="M670,70 C690,80 695,90 710,90" fill="none" stroke="#7b2cbf" stroke-width="1" stroke-dasharray="3,3" opacity="0.35"/>
+  <path d="M710,115 C700,125 685,130 675,140" fill="none" stroke="#7b2cbf" stroke-width="1" stroke-dasharray="3,3" opacity="0.35"/>
+
+  <!-- Floating particles -->
+  <circle cx="640" cy="45" r="1" fill="#c084fc" opacity="0.5"/>
+  <circle cx="740" cy="70" r="1.2" fill="#38bdf8" opacity="0.6"/>
+  <circle cx="730" cy="155" r="1" fill="#e0aaff" opacity="0.5"/>
+</svg>

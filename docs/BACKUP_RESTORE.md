@@ -1,5 +1,7 @@
 # Backup & Restore
 
+![Atomic backup snapshots with rotation and integrity check](images/backup-restore.png)
+
 ## Overview
 
 `scripts/backup.py` creates atomic snapshots of all data files (`*.db`, `*.json`) under `RIKS_DATA_DIR` (default: `data/`). SQLite databases are backed up using the online backup API — never raw file copy — so backups are safe even while the engine is running. JSON files are validated before writing.
