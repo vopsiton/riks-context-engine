@@ -14,9 +14,11 @@ orphan thread is left behind**.
 
 Deterministic coverage (acceptance criteria, #151)
 --------------------------------------------------
-1. After a timeout the active worker thread returns to the baseline count
-   (``threading.enumerate()``) within the tool's own observation cadence —
-   asserted against a slow-but-cooperative mock tool (no wall-clock races).
+1. After a timeout the worker thread is gone and the active thread count
+   returns to the baseline — asserted against a slow-but-cooperative mock
+   tool whose sleeps are ``stop_event.wait(slice)`` (woken instantly when
+   the timeout fires the event) — and cross-validated with a *named*
+   worker thread. No wall-clock races.
 2. The normal (pre-timeout) path is unchanged: results and behaviour match
    the original ``execute_goal`` contract.
 3. No thread leak: 10 consecutive timeout calls leave the active thread
@@ -41,13 +43,23 @@ from riks_context_engine.tools.executor import (
 
 
 def _worker_threads() -> int:
-    """Count non-main worker threads (the baseline is 0)."""
+    """Count non-main worker threads (the baseline is 0 in-process)."""
     return len(threading.enumerate())
 
 
-# A fast cooperative worker: returns immediately, but only once the stop
-# event has been observed as set. Used to *prove* the event fires without
-# relying on a wall-clock race.
+def _wait_until(predicate: Any, timeout: float = 5.0) -> None:
+    """Deterministically wait until ``predicate()`` is true (bounded)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    assert predicate(), f"condition not met within {timeout}s"
+
+
+# A fast cooperative worker: returns as soon as the stop event is set.
+# Used to *prove* the event fires — ``stop_event.wait(20)`` returns
+# immediately once the timeout has set the event (no wall-clock race).
 class StopProbeTool(Tool):
     name = "stop-probe"
     description = "Returns once the stop event is observed as set."
@@ -58,17 +70,13 @@ class StopProbeTool(Tool):
     }
 
     def execute(self, params: dict[str, Any]) -> str:
-        deadline = time.monotonic() + 20.0
-        while time.monotonic() < deadline:
-            if executor.get_stop_event().is_set():
-                return "stopped"
-            time.sleep(0.001)
-        return "not-stopped"
+        return "stopped" if executor.get_stop_event().wait(20.0) else "not-stopped"
 
 
-# A slow-but-cooperative worker: polls the stop event every 10 ms and
-# returns as soon as it is set. Emulates a real long tool call (llm_call,
-# web_fetch, file_read) that checks for cancellation between steps.
+# A slow-but-cooperative worker: sleeps in small slices via
+# ``stop_event.wait(slice)`` — which returns immediately when the timeout
+# fires the event. Emulates a real long tool call (llm_call, web_fetch,
+# file_read) that checks for cancellation between steps.
 class SlowCooperativeTool(Tool):
     name = "slow-coop"
     description = "Sleeps in small slices, returning when the stop event is set."
@@ -88,7 +96,7 @@ class SlowCooperativeTool(Tool):
         while elapsed < self.total:
             if stop.is_set():
                 return "cancelled"
-            time.sleep(self.slice)
+            stop.wait(self.slice)
             elapsed += self.slice
         return "finished"
 
@@ -107,7 +115,7 @@ class UncooperativeTool(Tool):
         self.duration = duration
 
     def execute(self, params: dict[str, Any]) -> str:
-        time.sleep(self.duration)
+        threading.Event().wait(self.duration)
         return "too-late"
 
 
@@ -151,7 +159,8 @@ class TestCooperativeCancellation:
 
     def test_stop_event_fires_on_timeout(self):
         """The stop event is set by the timeout (proven via a fast probe,
-        without a wall-clock race)."""
+        no wall-clock race: ``stop_event.wait(20)`` returns instantly once
+        the event is set by the timeout)."""
         registry = build_default_registry()
         registry.register(StopProbeTool())
         result = execute_goal("stop-probe: x", registry, timeout=0.05)
@@ -159,8 +168,9 @@ class TestCooperativeCancellation:
         assert result.result == ""
 
     def test_worker_thread_returns_to_baseline(self):
-        """A slow-but-cooperative tool returns to the baseline thread count
-        shortly after the timeout (deterministic: the tool polls every 10 ms)."""
+        """A slow-but-cooperative tool's worker thread is gone shortly
+        after the timeout (deterministic: the tool wakes on the stop
+        event), so the thread count returns to baseline."""
         executor._reset_orphan_thread_count()
         baseline = _worker_threads()
         registry = build_default_registry()
@@ -168,13 +178,30 @@ class TestCooperativeCancellation:
         result = execute_goal("slow-coop: x", registry, timeout=0.2)
         assert result.timed_out is True
 
-        # Wait (deterministically) for the worker to observe the event and
-        # finish — bounded well under the grace period.
-        deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline and _worker_threads() > baseline:
-            time.sleep(0.01)
+        _wait_until(lambda: _worker_threads() == baseline)
         assert _worker_threads() == baseline
         assert executor.get_orphan_thread_count() == 0
+
+    def test_named_worker_is_gone_after_timeout(self):
+        """Cross-validation with a directly-controlled worker thread:
+        after the timeout the stop event is set, the cooperative worker
+        finishes (``Event.wait`` wakes on it) and its ``is_alive()`` flips
+        to False — no orphan, independent of any other threads."""
+        tool = SlowCooperativeTool(total=5.0, slice=0.01)
+        with executor._stop_event_lock:
+            executor._stop_event.clear()
+
+        def _run() -> None:
+            tool.execute({})
+
+        worker = threading.Thread(target=_run, name="test-orphan-worker", daemon=True)
+        worker.start()
+        worker.join(0.2)  # the timeout window
+        assert worker.is_alive()
+        with executor._stop_event_lock:
+            executor._stop_event.set()
+        worker.join(executor._ORPHAN_GRACE_SECONDS)
+        assert not worker.is_alive()
 
     def test_no_thread_leak_10_consecutive_timeouts(self):
         """Acceptance criterion 3: 10 consecutive timeouts leave the active
@@ -187,11 +214,10 @@ class TestCooperativeCancellation:
         for _ in range(10):
             result = execute_goal("slow-coop: x", registry, timeout=0.05)
             assert result.timed_out is True
+            # Deterministically wait for this worker to finish before the
+            # next call (keeps the count assertion tight and race-free).
+            _wait_until(lambda: _worker_threads() == baseline)
 
-        # Deterministically wait for all workers to finish.
-        deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline and _worker_threads() > baseline:
-            time.sleep(0.01)
         assert _worker_threads() == baseline
         assert executor.get_orphan_thread_count() == 0
 
@@ -201,15 +227,21 @@ class TestUncooperativeToolBounded:
 
     def test_orphan_counted_and_bounded(self, monkeypatch: pytest.MonkeyPatch):
         executor._reset_orphan_thread_count()
+        # Deterministic: shrink the grace period below the worker's own
+        # lifetime, so the grace join is *guaranteed* to time out — no
+        # wall-clock race, no real-time.sleep after the call (and hence no
+        # teardown-time sqlite3/SystemError shutdown spam). The worker is
+        # then joined explicitly below.
+        monkeypatch.setattr(executor, "_ORPHAN_GRACE_SECONDS", 0.2)
         baseline = _worker_threads()
         registry = build_default_registry()
-        registry.register(UncooperativeTool(duration=5.0))
+        registry.register(UncooperativeTool(duration=0.3))
 
         result = execute_goal("uncoop: x", registry, timeout=0.05)
         assert result.timed_out is True
         # The misbehaving thread is counted (diagnostic), not unbounded.
         assert executor.get_orphan_thread_count() == 1
 
-        # Let the (5 s) tool finish so the test process is left clean.
-        time.sleep(5.0)
+        # Deterministically wait for the (0.3 s) worker to finish.
+        _wait_until(lambda: _worker_threads() == baseline)
         assert _worker_threads() == baseline
