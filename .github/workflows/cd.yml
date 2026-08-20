@@ -177,6 +177,47 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # ===== Stage 2b: arm64 build check (bonus, #156) ===== #
+  # Proves the per-arch pinned base (Dockerfile comment block) builds for
+  # linux/arm64 WITHOUT publishing (push: false) and WITHOUT QEMU
+  # emulation (arm64 runners run natively). The amd64 path above is
+  # unchanged. If the generated arm64 digest drifts from the pinned one,
+  # scripts/gen_dockerfile_arm64.py fails the job (digest-sync guard).
+  arm64-build:
+    name: Docker Build arm64 (no push)
+    runs-on: ubuntu-24.04-arm
+    needs: [lint, type-check, test]
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate arm64 Dockerfile variant
+        run: |
+          python3 scripts/gen_dockerfile_arm64.py Dockerfile > Dockerfile.arm64
+          grep "^FROM" Dockerfile.arm64
+
+      - name: Build arm64 image (buildx, push=false)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.arm64
+          platforms: linux/arm64
+          push: false
+          load: true
+          tags: ghcr.io/${{ github.repository }}:arm64-ci-${{ github.sha }}
+          # NOTE: no gha cache here — the arm64 runner's default "docker"
+          # driver (used with load: true) does not support "Cache export is
+          # not supported for the docker driver". Build stays uncached
+          # (correctness proof, not a build-speed path).
+          provenance: false
+          sbom: false
+
+      - name: Verify built image architecture
+        run: |
+          TAG="ghcr.io/${{ github.repository }}:arm64-ci-${{ github.sha }}"
+          docker image inspect --format 'Arch: {{.Architecture}} / {{.Os}}' "${TAG}"
+          [ "$(docker image inspect --format '{{.Architecture}}' "${TAG}")" = "arm64" ]
+
   # ===== Stage 3: Deploy to Staging (Master Push) ===== #
   deploy-staging:
     name: Deploy to Staging
