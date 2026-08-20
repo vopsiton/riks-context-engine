@@ -5,6 +5,8 @@ version: '3.9'
 
 services:
   staging:
+    profiles:
+      - staging
     build:
       context: .
       dockerfile: Dockerfile
@@ -19,6 +21,8 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - LOG_LEVEL=DEBUG
       - TEST_MODE=true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - staging-data:/app/data
     ports:
