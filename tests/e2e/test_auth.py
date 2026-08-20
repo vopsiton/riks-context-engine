@@ -1,4 +1,5 @@
 """E2E auth + tenant isolation tests (#166).
+# mypy: ignore-errors
 
 Tests the API key auth middleware and tenant isolation against the
 FastAPI app via TestClient (CI) and against a live staging instance
@@ -245,7 +246,7 @@ class TestStagingSmoke:
     def test_staging_auth_matrix(self):
         """Staging'de gerçek HTTP ile auth matrix."""
         base = _base_url()
-        import urllib.request
+        import requests
 
         # 1. Invalid key → 401
         r = requests.get(
@@ -264,16 +265,14 @@ class TestStagingSmoke:
         assert r.status_code == 200, f"Staging: valid key expected 200, got {r.status_code}"
 
         # 3. /health → 200 no auth
-        req = urllib.request.Request(f"{base}/health")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            r = type("R", (), {"status_code": resp.status, "text": resp.read().decode()})()
+        r = requests.get(f"{base}/health", timeout=10)
         assert r.status_code == 200, f"Staging: /health expected 200, got {r.status_code}"
 
     @pytest.mark.skipif(not _is_staging(), reason="Only runs against live staging instance")
     def test_staging_chat_real_llm(self):
         """Staging'de gerçek Ollama ile chat: 'Benim adım Vahit' → 'Adım ne?' → 'Vahit'."""
         base = _base_url()
-        import urllib.request
+        import requests
 
         h = _headers(api_key=VALID_API_KEY, tenant="staging-smoke-166")
 
