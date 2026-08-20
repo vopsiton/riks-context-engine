@@ -1,6 +1,6 @@
 # Rik Context Engine — Yeni Özellikler Rehberi
 
-> Bu belge, teknik jargona boğulmadan, son eklenen üç büyük özelliği anlatır.  
+> Bu belge, teknik jargona boğulmadan, son eklenen üç büyük özelliği anlatır.
 > Hedef kitle: ürünü merak eden herkes — geliştirici olmanız gerekmiyor.
 
 ---

@@ -27,7 +27,7 @@
       <stop offset="0%" stop-color="#f0f9ff" />
       <stop offset="100%" stop-color="#e0f2fe" />
     </linearGradient>
-    
+
     <!-- Card 2 Gradient (Emerald/Mint) -->
     <linearGradient id="card2Grad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#f0fdf4" />
@@ -57,7 +57,7 @@
 
   <!-- Background -->
   <rect width="100%" height="100%" fill="url(#bgGrad)" />
-  
+
   <!-- Subtle decorative grid -->
   <g opacity="0.2">
     <path d="M 0,100 L 1200,100 M 0,200 L 1200,200 M 0,300 L 1200,300 M 0,400 L 1200,400 M 0,500 L 1200,500" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="10 10"/>
@@ -70,7 +70,7 @@
     <rect width="48" height="48" rx="14" fill="#0f172a" />
     <path d="M16 24C16 19.58 19.58 16 24 16C28.42 16 32 19.58 32 24C32 28.42 28.42 32 24 32" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" fill="none"/>
     <circle cx="24" cy="24" r="3" fill="#38bdf8" />
-    
+
     <text x="68" y="24" class="title">Rik Context Engine</text>
     <text x="68" y="44" class="subtitle">Yeni Nesil Context Yönetim Mimarisi ve Yetenekleri</text>
   </g>
@@ -79,7 +79,7 @@
   <g class="card" transform="translate(80, 160)" filter="url(#shadow)">
     <!-- Card Base -->
     <rect width="320" height="280" rx="24" fill="url(#card1Grad)" stroke="#bae6fd" stroke-width="1.5"/>
-    
+
     <!-- Icon Container -->
     <rect x="24" y="28" width="48" height="48" rx="12" fill="#e0f2fe" stroke="#38bdf8" stroke-width="1.5" />
     <!-- Brain & Isolation Icon -->
@@ -93,7 +93,7 @@
 
     <!-- Content -->
     <text x="24" y="112" class="card-title">Ortak Hafıza</text>
-    
+
     <!-- Paragraph lines -->
     <text x="24" y="148" class="card-text">Ekip genelinde context paylaşımını</text>
     <text x="24" y="170" class="card-text">mümkün kılarken, güçlü tenant</text>
@@ -111,7 +111,7 @@
   <g class="card" transform="translate(440, 160)" filter="url(#shadow)">
     <!-- Card Base -->
     <rect width="320" height="280" rx="24" fill="url(#card2Grad)" stroke="#bbf7d0" stroke-width="1.5"/>
-    
+
     <!-- Icon Container -->
     <rect x="24" y="28" width="48" height="48" rx="12" fill="#dcfce7" stroke="#4ade80" stroke-width="1.5" />
     <!-- Backup & Heart Icon -->
@@ -126,7 +126,7 @@
 
     <!-- Content -->
     <text x="24" y="112" class="card-title">Yedekleme &amp; Sağlık</text>
-    
+
     <!-- Paragraph lines -->
     <text x="24" y="148" class="card-text">Context geçmişinizi otomatik olarak</text>
     <text x="24" y="170" class="card-text">yedekler. Sürekli sağlık kontrolü</text>
@@ -144,7 +144,7 @@
   <g class="card" transform="translate(800, 160)" filter="url(#shadow)">
     <!-- Card Base -->
     <rect width="320" height="280" rx="24" fill="url(#card3Grad)" stroke="#c7d2fe" stroke-width="1.5"/>
-    
+
     <!-- Icon Container -->
     <rect x="24" y="28" width="48" height="48" rx="12" fill="#e0e7ff" stroke="#818cf8" stroke-width="1.5" />
     <!-- Lightning & Terminal Icon -->
@@ -157,7 +157,7 @@
 
     <!-- Content -->
     <text x="24" y="112" class="card-title">MCP v2 Çalıştırıcı</text>
-    
+
     <!-- Paragraph lines -->
     <text x="24" y="148" class="card-text">Model Context Protocol v2 ile</text>
     <text x="24" y="170" class="card-text">entegre görevleri doğrudan sistem</text>

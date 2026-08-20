@@ -1,6 +1,6 @@
 # Rik Context Engine — 3 Yeni Güç, Sadece Türkçe
 
-> **19 Ağustos 2026 sprinti** — #108 (Ortak Hafıza), #105 (Yedekleme + Sağlık Kontrolü), #107 (MCP v2).  
+> **19 Ağustos 2026 sprinti** — #108 (Ortak Hafıza), #105 (Yedekleme + Sağlık Kontrolü), #107 (MCP v2).
 > Bu döküman geliştirici olmanızı gerektirmez. "Ne işe yarıyor, beni neden ilgilendirir?" sorularına gündelik dille cevap verir.
 
 ![Üç yeni özellik infografiği](assets/riks-ozellikler-v040.png)

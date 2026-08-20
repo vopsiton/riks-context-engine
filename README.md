@@ -186,7 +186,7 @@ docker-compose exec dev python -c "from riks_context_engine import *; print('OK'
 | 🔗 Knowledge Graph | SQLite | Graph queries with foreign keys |
 | 🐘 Semantic (alt) | PostgreSQL | Shared, multi-process, horizontally-scaled |
 
-> PostgreSQL backend: `pip install riks-context-engine[postgres]`  
+> PostgreSQL backend: `pip install riks-context-engine[postgres]`
 > Apply schema: `POSTGRES_DSN=... python scripts/migrate_postgres.py`
 
 ---
