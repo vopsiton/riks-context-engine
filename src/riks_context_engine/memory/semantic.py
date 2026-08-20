@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,40 +42,53 @@ class SemanticMemory:
         self._is_temp = self.db_path.startswith(":") and self.db_path.endswith(":")
         if not self._is_temp:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._shared_conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self._conn = lambda: self._shared_conn
+        # One connection per thread, kept open for the lifetime of the
+        # object. The previous design opened a fresh sqlite3.connect() per
+        # call and leaked (never closed) the connections: under load the
+        # fd count grew until the process hit its limit, sqlite3 calls
+        # then failed with 'bad parameter or other API misuse' and writes
+        # were silently lost. The cross-process test 4 procs x 25 writes
+        # exposed this as 'Expected 100 entries, got 75'. (#163)
+        self._local = threading.local()
         self._init_db()
 
     def __del__(self):
-        self._shared_conn.close()
+        try:
+            self._local.conn.close()
+        except Exception:  # noqa: BLE001 - best-effort cleanup
+            pass
 
     def _connect(self):
-        return sqlite3.connect(self.db_path)
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute("PRAGMA busy_timeout=10000")
+            self._local.conn = conn
+        return conn
 
     def _init_db(self) -> None:
         """Initialize the SQLite schema."""
-        with self._conn() as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA busy_timeout=5000")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS semantic_entries (
-                    id TEXT PRIMARY KEY,
-                    subject TEXT NOT NULL,
-                    predicate TEXT NOT NULL,
-                    object TEXT,
-                    confidence REAL NOT NULL DEFAULT 1.0,
-                    created_at TEXT NOT NULL,
-                    last_accessed TEXT NOT NULL,
-                    access_count INTEGER NOT NULL DEFAULT 0,
-                    embedding BLOB
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_semantic_subject ON semantic_entries(subject)"
+        conn = self._connect()
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS semantic_entries (
+                id TEXT PRIMARY KEY,
+                subject TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                object TEXT,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                created_at TEXT NOT NULL,
+                last_accessed TEXT NOT NULL,
+                access_count INTEGER NOT NULL DEFAULT 0,
+                embedding BLOB
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_semantic_predicate ON semantic_entries(predicate)"
-            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_semantic_subject ON semantic_entries(subject)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_semantic_predicate ON semantic_entries(predicate)"
+        )
 
     def add(
         self,
@@ -96,47 +110,44 @@ class SemanticMemory:
             last_accessed=now,
             embedding=embedding,
         )
-        with self._conn() as conn:
-            emb_bytes = json.dumps(embedding) if embedding else None
-            conn.execute(
-                """
-                INSERT INTO semantic_entries
-                (id, subject, predicate, object, confidence, created_at, last_accessed, access_count, embedding)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    entry.id,
-                    entry.subject,
-                    entry.predicate,
-                    entry.object,
-                    entry.confidence,
-                    entry.created_at.isoformat(),
-                    entry.last_accessed.isoformat(),
-                    entry.access_count,
-                    emb_bytes,
-                ),
-            )
-            conn.commit()
+        conn = self._connect()
+        emb_bytes = json.dumps(embedding) if embedding else None
+        conn.execute(
+            """
+            INSERT INTO semantic_entries
+            (id, subject, predicate, object, confidence, created_at, last_accessed, access_count, embedding)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                entry.id,
+                entry.subject,
+                entry.predicate,
+                entry.object,
+                entry.confidence,
+                entry.created_at.isoformat(),
+                entry.last_accessed.isoformat(),
+                entry.access_count,
+                emb_bytes,
+            ),
+        )
+        conn.commit()
         return entry
 
     def get(self, entry_id: str) -> SemanticEntry | None:
         """Get entry by ID, incrementing access count."""
-        with self._conn() as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM semantic_entries WHERE id = ?", (entry_id,)
-            ).fetchone()
+        conn = self._connect()
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM semantic_entries WHERE id = ?", (entry_id,)).fetchone()
         if not row:
             return None
         entry = self._row_to_entry(row)
         entry.access_count += 1
         entry.last_accessed = datetime.now(timezone.utc)
-        with self._conn() as conn:
-            conn.execute(
-                "UPDATE semantic_entries SET access_count = ?, last_accessed = ? WHERE id = ?",
-                (entry.access_count, entry.last_accessed.isoformat(), entry_id),
-            )
-            conn.commit()
+        conn.execute(
+            "UPDATE semantic_entries SET access_count = ?, last_accessed = ? WHERE id = ?",
+            (entry.access_count, entry.last_accessed.isoformat(), entry_id),
+        )
+        conn.commit()
         return entry
 
     def _row_to_entry(self, row: sqlite3.Row) -> SemanticEntry:
@@ -159,48 +170,48 @@ class SemanticMemory:
         self, subject: str | None = None, predicate: str | None = None
     ) -> list[SemanticEntry]:
         """Query semantic memory by subject and/or predicate."""
-        with self._conn() as conn:
-            conn.row_factory = sqlite3.Row
+        conn = self._connect()
+        conn.row_factory = sqlite3.Row
 
-            # Escape SQL LIKE wildcards in user input so searches are literal
-            # Use ESCAPE clause to treat \ as escape character for LIKE patterns
-            def _escape(s: str) -> str:
-                return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        # Escape SQL LIKE wildcards in user input so searches are literal
+        # Use ESCAPE clause to treat \ as escape character for LIKE patterns
+        def _escape(s: str) -> str:
+            return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-            esc_subject = _escape(subject) if subject else None
-            esc_predicate = _escape(predicate) if predicate else None
+        esc_subject = _escape(subject) if subject else None
+        esc_predicate = _escape(predicate) if predicate else None
 
-            if esc_subject and esc_predicate:
-                rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE '\\' AND predicate LIKE ? ESCAPE '\\'",
-                    (f"%{esc_subject}%", f"%{esc_predicate}%"),
-                ).fetchall()
-            elif esc_subject:
-                rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE '\\'",
-                    (f"%{esc_subject}%",),
-                ).fetchall()
-            elif esc_predicate:
-                rows = conn.execute(
-                    "SELECT * FROM semantic_entries WHERE predicate LIKE ? ESCAPE '\\'",
-                    (f"%{esc_predicate}%",),
-                ).fetchall()
-            else:
-                rows = conn.execute("SELECT * FROM semantic_entries").fetchall()
+        if esc_subject and esc_predicate:
+            rows = conn.execute(
+                "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE '\\' AND predicate LIKE ? ESCAPE '\\'",
+                (f"%{esc_subject}%", f"%{esc_predicate}%"),
+            ).fetchall()
+        elif esc_subject:
+            rows = conn.execute(
+                "SELECT * FROM semantic_entries WHERE subject LIKE ? ESCAPE '\\'",
+                (f"%{esc_subject}%",),
+            ).fetchall()
+        elif esc_predicate:
+            rows = conn.execute(
+                "SELECT * FROM semantic_entries WHERE predicate LIKE ? ESCAPE '\\'",
+                (f"%{esc_predicate}%",),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM semantic_entries").fetchall()
         return [self._row_to_entry(r) for r in rows]
 
     def recall(self, query: str) -> list[SemanticEntry]:
         """Semantic search across knowledge using keyword matching."""
         pattern = f"%{query}%"
-        with self._conn() as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """SELECT * FROM semantic_entries
-                   WHERE subject LIKE ? COLLATE NOCASE
-                      OR predicate LIKE ? COLLATE NOCASE
-                      OR object LIKE ? COLLATE NOCASE""",
-                (pattern, pattern, pattern),
-            ).fetchall()
+        conn = self._connect()
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT * FROM semantic_entries
+               WHERE subject LIKE ? COLLATE NOCASE
+                  OR predicate LIKE ? COLLATE NOCASE
+                  OR object LIKE ? COLLATE NOCASE""",
+            (pattern, pattern, pattern),
+        ).fetchall()
         return [self._row_to_entry(r) for r in rows]
 
     def to_memory_entry(self) -> MemoryEntry:
@@ -235,12 +246,12 @@ class SemanticMemory:
         )
 
     def __len__(self) -> int:
-        with self._conn() as conn:
-            row = conn.execute("SELECT COUNT(*) FROM semantic_entries").fetchone()
+        conn = self._connect()
+        row = conn.execute("SELECT COUNT(*) FROM semantic_entries").fetchone()
         return row[0] if row else 0
 
     def delete(self, entry_id: str) -> bool:
-        with self._conn() as conn:
-            cur = conn.execute("DELETE FROM semantic_entries WHERE id = ?", (entry_id,))
-            conn.commit()
-            return cur.rowcount > 0
+        conn = self._connect()
+        cur = conn.execute("DELETE FROM semantic_entries WHERE id = ?", (entry_id,))
+        conn.commit()
+        return cur.rowcount > 0  # type: ignore[no-any-return]

@@ -159,8 +159,10 @@ class TierManager:
 
         # Scan semantic entries for demotion candidates
         if self.config.demote_threshold > 0:
-            with self.semantic._conn() as conn:
-                rows = conn.execute("SELECT id FROM semantic_entries").fetchall()
+            # Use the public API (semantic.query()) instead of reaching into
+            # the private connection: the connection lifecycle is managed
+            # per-thread inside SemanticMemory (#163).
+            rows = [(e.id,) for e in self.semantic.query()]
             for row in rows:
                 if self._demote_semantic_entry(row[0]):
                     demoted += 1

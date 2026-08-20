@@ -75,9 +75,9 @@ class TestSQLInjectionFix:
         assert len(results) == 0
 
         # Verify table still exists
-        with mem._conn() as conn:
-            row = conn.execute("SELECT COUNT(*) FROM semantic_entries").fetchone()
-            assert row[0] == 1, "DROP TABLE was executed! SQL injection succeeded!"
+        conn = mem._connect()
+        row = conn.execute("SELECT COUNT(*) FROM semantic_entries").fetchone()
+        assert row[0] == 1, "DROP TABLE was executed! SQL injection succeeded!"
 
     def test_like_clause_literal_percent_not_wildcard(self):
         """User input with % should match literal %, not act as wildcard.
@@ -181,9 +181,9 @@ class TestSQLInjectionFix:
         assert len(results) == 0
 
         # Table should still exist
-        with mem._conn() as conn:
-            row = conn.execute("SELECT COUNT(*) FROM semantic_entries").fetchone()
-            assert row[0] == 1
+        conn = mem._connect()
+        row = conn.execute("SELECT COUNT(*) FROM semantic_entries").fetchone()
+        assert row[0] == 1
 
 
 class TestKnowledgeGraphSQLSafety:

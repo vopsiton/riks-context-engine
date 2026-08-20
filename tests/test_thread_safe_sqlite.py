@@ -185,9 +185,9 @@ class TestThreadSafeSQLite:
 
         mem = SemanticMemory(db_path=db_path)
 
-        with mem._conn() as conn:
-            result = conn.execute("PRAGMA journal_mode").fetchone()
-            journal_mode = result[0] if result else "unknown"
+        conn = mem._connect()
+        result = conn.execute("PRAGMA journal_mode").fetchone()
+        journal_mode = result[0] if result else "unknown"
 
         try:
             os.unlink(db_path)
@@ -206,9 +206,9 @@ class TestThreadSafeSQLite:
         for i in range(50):
             mem.add(subject=f"entry_{i}", predicate="test", object=f"obj_{i}")
 
-        with mem._conn() as conn:
-            result = conn.execute("PRAGMA journal_mode").fetchone()
-            journal_mode = result[0] if result else "unknown"
+        conn = mem._connect()
+        result = conn.execute("PRAGMA journal_mode").fetchone()
+        journal_mode = result[0] if result else "unknown"
 
         try:
             os.unlink(db_path)
@@ -220,12 +220,12 @@ class TestThreadSafeSQLite:
     # ── AC-51-03: Context manager usage ────────────────────────────────
 
     def test_context_manager_used_for_all_operations(self):
-        """All database operations should use 'with self._conn()' context manager.
+        """All database operations are managed through SemanticMemory.
 
-        This ensures connections are properly closed after each operation.
+        Connection lifecycle is per-thread and object-scoped (#163): the
+        public API (add/query/delete/len) manages its own connection, so
+        no manual `with conn` blocks are needed at the call site.
         """
-        # This is verified by the fact that all methods use `with self._conn()`.
-        # The delete() method now uses `with self._write_lock` AND `with self._conn()`.
         mem = SemanticMemory(db_path=":memory:")
         mem.add("test", "test", "test")
 
