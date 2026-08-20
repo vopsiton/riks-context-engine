@@ -205,8 +205,10 @@ jobs:
           push: false
           load: true
           tags: ghcr.io/${{ github.repository }}:arm64-ci-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # NOTE: no gha cache here — the arm64 runner's default "docker"
+          # driver (used with load: true) does not support "Cache export is
+          # not supported for the docker driver". Build stays uncached
+          # (correctness proof, not a build-speed path).
           provenance: false
           sbom: false
 
