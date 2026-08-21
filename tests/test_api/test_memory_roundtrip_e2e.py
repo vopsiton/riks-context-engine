@@ -15,11 +15,12 @@ surface (never a real staging endpoint):
    sets on all deterministic fields (timestamp-derived ids, metadata
    timestamps and access counters are excluded by design).
 
-NOTE on stores: the export/import endpoints read the module-level
-singleton memory stores (set by the app lifespan), while /api/chat
-wires tenant-scoped stores (#158). The roundtrip is therefore exercised
-on the stores the endpoints actually touch — seeded via the same
-add/store APIs the import path uses.
+NOTE on stores (#184): the export/import endpoints are tenant-scoped —
+they read/write the caller's per-tenant stores from the
+``TenantMemoryRegistry`` (same pattern as /api/chat, #158). The roundtrip
+is therefore exercised end-to-end over HTTP: tenant A seeds by importing
+its own manifest and all assertions run through tenant-scoped exports,
+so tenant B's calls provably never see or mutate tenant A's data.
 """
 
 from __future__ import annotations
@@ -46,14 +47,85 @@ DETERMINISTIC_FIELDS: dict[str, list[str]] = {
     "procedural": ["name", "description", "steps", "tags", "type"],
 }
 
+_SEED_MANIFEST: dict[str, Any] = {
+    "metadata": {
+        "schema_version": memory_export.SCHEMA_VERSION,
+        "exported_at": "2026-08-20T00:00:00+00:00",
+        "tool": "riks-context-engine",
+        "export_id": "rt-seed",
+    },
+    "episodic": [
+        {
+            "id": "rt_ep1",
+            "timestamp": "2026-08-20T10:00:00+00:00",
+            "content": "deployed the k8s manifests on the staging cluster",
+            "importance": 0.9,
+            "embedding": [0.1, 0.2, 0.3],
+            "tags": ["ops", "deploy"],
+            "type": "episodic",
+        },
+        {
+            "id": "rt_ep2",
+            "timestamp": "2026-08-20T11:00:00+00:00",
+            "content": "fixed the RBAC fail-closed auth bug",
+            "importance": 0.7,
+            "embedding": None,
+            "tags": ["security"],
+            "type": "episodic",
+        },
+    ],
+    "semantic": [
+        {
+            "id": "rt_sem1",
+            "subject": "user",
+            "predicate": "name",
+            "object": "Vahit",
+            "confidence": 1.0,
+            "created_at": "2026-08-20T10:00:00+00:00",
+            "last_accessed": "2026-08-20T10:00:00+00:00",
+            "access_count": 0,
+            "embedding": [0.5, 0.5, 0.5],
+            "type": "semantic",
+        },
+        {
+            "id": "rt_sem2",
+            "subject": "service",
+            "predicate": "stack",
+            "object": "fastapi + sqlite + redis",
+            "confidence": 0.8,
+            "created_at": "2026-08-20T11:00:00+00:00",
+            "last_accessed": "2026-08-20T11:00:00+00:00",
+            "access_count": 0,
+            "embedding": None,
+            "type": "semantic",
+        },
+    ],
+    "procedural": [
+        {
+            "id": "rt_proc1",
+            "name": "daily_backup",
+            "description": "Nightly memory snapshot routine",
+            "steps": ["snapshot memory", "verify checksum", "archive"],
+            "created_at": "2026-08-20T09:00:00+00:00",
+            "last_used": "2026-08-20T09:00:00+00:00",
+            "use_count": 0,
+            "success_rate": 1.0,
+            "tags": ["ops", "backup"],
+            "type": "procedural",
+        },
+    ],
+}
+
+_SEED_COUNTS = {"episodic": 2, "semantic": 2, "procedural": 1}
+
 
 @pytest.fixture(autouse=True)
-def _fresh_singleton_stores(tmp_path, monkeypatch):
-    """Point the app's singleton memory stores at a per-test temp dir.
+def _fresh_tenant_stores(tmp_path, monkeypatch):
+    """Isolate the tenant-scoped registry in a per-test temp dir.
 
-    Patches the lifespan (which creates the singletons the export/import
-    endpoints read) and clears the tenant-scoped memory registry so no
-    state leaks between tests.
+    The export/import endpoints are tenant-scoped (#184): they read/write
+    the caller's stores from ``_tenant_memory_registry``. Each test gets
+    a fresh registry data dir so no state leaks between tests.
     """
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     _tenant_memory_registry._semantic.clear()
@@ -87,42 +159,21 @@ def client():
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _seed_stores(server: Any) -> None:
-    """Populate the singleton stores the endpoints read (API-level seeding).
+def _seed_tenant(client: TestClient, headers: dict[str, str]) -> dict[str, Any]:
+    """Seed a tenant's scoped store via the HTTP import path.
 
-    Same add/store calls the import path makes, so the roundtrip starts
-    from a known, non-empty state.
+    Tenant-scoped import (#184): seeding tenant A via its own header only
+    writes into tenant A's registry store, so every later roundtrip
+    assertion exercises the same stores the endpoints use.
     """
-    server._episodic_memory.add(
-        content="deployed the k8s manifests on the staging cluster",
-        importance=0.9,
-        tags=["ops", "deploy"],
-        embedding=[0.1, 0.2, 0.3],
+    r = client.post(
+        "/api/v1/memory/import",
+        json={"content": json.dumps(_SEED_MANIFEST), "format": "json", "merge": True},
+        headers=headers,
     )
-    server._episodic_memory.add(
-        content="fixed the RBAC fail-closed auth bug",
-        importance=0.7,
-        tags=["security"],
-    )
-    server._semantic_memory.add(
-        subject="user",
-        predicate="name",
-        object="Vahit",
-        confidence=1.0,
-        embedding=[0.5, 0.5, 0.5],
-    )
-    server._semantic_memory.add(
-        subject="service",
-        predicate="stack",
-        object="fastapi + sqlite + redis",
-        confidence=0.8,
-    )
-    server._procedural_memory.store(
-        name="daily_backup",
-        description="Nightly memory snapshot routine",
-        steps=["snapshot memory", "verify checksum", "archive"],
-        tags=["ops", "backup"],
-    )
+    assert r.status_code == 200, f"seed import failed: {r.text}"
+    assert r.json()["imported"] == _SEED_COUNTS
+    return _SEED_MANIFEST
 
 
 def _export(client: TestClient, headers: dict[str, str]) -> dict[str, Any]:
@@ -158,7 +209,7 @@ def _record_content_set(records: list[dict[str, Any]], fields: list[str]) -> set
 
 class TestRoundtrip:
     def test_export_response_schema(self, client: TestClient):
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         data = _export(client, TENANT_A)
 
         assert data["schema_version"] == memory_export.SCHEMA_VERSION
@@ -174,18 +225,14 @@ class TestRoundtrip:
             assert data["counts"][tier] == len(m[tier])
 
     def test_export_counts_match_seeded_state(self, client: TestClient):
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         data = _export(client, TENANT_A)
         m = _manifest(data)
-        assert data["counts"] == {
-            "episodic": 2,
-            "semantic": 2,
-            "procedural": 1,
-        }
+        assert data["counts"] == _SEED_COUNTS
         assert all(rec["type"] == tier for tier in TIER_KEYS for rec in m[tier])
 
     def test_export_selective_types_filter(self, client: TestClient):
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         r = client.get(
             "/api/v1/memory/export",
             params={"format": "json", "types": "semantic"},
@@ -200,7 +247,7 @@ class TestRoundtrip:
     def test_import_after_export_roundtrip_no_data_loss(self, client: TestClient):
         """Re-import an export into the same tenant: nothing lost, nothing
         duplicated (merge=True skips existing ids)."""
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         data = _export(client, TENANT_A)
         m = _manifest(data)
 
@@ -208,21 +255,37 @@ class TestRoundtrip:
         assert body["schema_version"] == memory_export.SCHEMA_VERSION
         assert body["imported"] == dict.fromkeys(TIER_KEYS, 0)
 
-        # Every exported record is still reachable with the same content.
+        # Every exported record is still reachable in the tenant's scoped
+        # store, verified via a fresh export (full HTTP roundtrip).
+        after_manifest = _manifest(_export(client, TENANT_A))
+        for tier in TIER_KEYS:
+            assert _record_content_set(after_manifest[tier], DETERMINISTIC_FIELDS[tier]) == (
+                _record_content_set(m[tier], DETERMINISTIC_FIELDS[tier])
+            ), f"{tier} records lost after roundtrip"
+
+        # Store-level check on the tenant's registry store (not the
+        # module-level singletons — those are no longer the endpoint's
+        # data path since #184).
         for rec in m["episodic"]:
-            entry = server_module._episodic_memory.entries[rec["id"]]
+            entry = _tenant_memory_registry.get_episodic(TENANT_A["X-Tenant-Id"]).entries[rec["id"]]
             assert entry.content == rec["content"]
             assert entry.importance == rec["importance"]
             assert (entry.tags or []) == (rec["tags"] or [])
             assert entry.embedding == rec["embedding"]
         for rec in m["semantic"]:
-            matched = [row for row in server_module._semantic_memory.query() if row.id == rec["id"]]
+            matched = [
+                row
+                for row in _tenant_memory_registry.get_semantic(TENANT_A["X-Tenant-Id"]).query()
+                if row.id == rec["id"]
+            ]
             assert matched, f"semantic record {rec['id']} lost after roundtrip"
             assert matched[0].subject == rec["subject"]
             assert matched[0].predicate == rec["predicate"]
             assert matched[0].object == rec["object"]
         for rec in m["procedural"]:
-            proc = server_module._procedural_memory.procedures[rec["id"]]
+            proc = _tenant_memory_registry.get_procedural(TENANT_A["X-Tenant-Id"]).procedures[
+                rec["id"]
+            ]
             assert proc.name == rec["name"]
             assert list(proc.steps) == list(rec["steps"])
 
@@ -231,20 +294,23 @@ class TestRoundtrip:
         assert after["counts"] == data["counts"]
 
     def test_reimport_after_wipe_restores_all_records(self, client: TestClient):
-        """Export → wipe the stores → import again: every record restored."""
-        _seed_stores(server_module)
+        """Export → wipe the tenant's store → import again: every record
+        restored (merge=False wipes the caller's scoped store only)."""
+        _seed_tenant(client, TENANT_A)
         data = _export(client, TENANT_A)
         m = _manifest(data)
         expected = {tier: len(m[tier]) for tier in TIER_KEYS}
         assert sum(expected.values()) == 5
 
-        # Wipe (simulates a fresh/lost instance).
-        for epi_id in list(server_module._episodic_memory.entries):
-            server_module._episodic_memory.delete(epi_id)
-        for row in server_module._semantic_memory.query():
-            server_module._semantic_memory.delete(row.id)
-        for proc_id in list(server_module._procedural_memory.procedures):
-            server_module._procedural_memory.delete(proc_id)
+        tenant_a = TENANT_A["X-Tenant-Id"]
+        # Wipe (simulates a fresh/lost instance) — via the tenant's scoped
+        # registry stores, the same stores the endpoints read.
+        for epi_id in list(_tenant_memory_registry.get_episodic(tenant_a).entries):
+            _tenant_memory_registry.get_episodic(tenant_a).delete(epi_id)
+        for row in _tenant_memory_registry.get_semantic(tenant_a).query():
+            _tenant_memory_registry.get_semantic(tenant_a).delete(row.id)
+        for proc_id in list(_tenant_memory_registry.get_procedural(tenant_a).procedures):
+            _tenant_memory_registry.get_procedural(tenant_a).delete(proc_id)
         assert _export(client, TENANT_A)["counts"] == dict.fromkeys(TIER_KEYS, 0)
 
         r = client.post(
@@ -265,7 +331,7 @@ class TestRoundtrip:
 
     def test_yaml_roundtrip(self, client: TestClient):
         """Same roundtrip contract in YAML format."""
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         r = client.get("/api/v1/memory/export", params={"format": "yaml"}, headers=TENANT_A)
         assert r.status_code == 200
         r2 = client.post(
@@ -279,6 +345,7 @@ class TestRoundtrip:
         assert _export(client, TENANT_A)["counts"]["episodic"] == 2
 
     def test_import_rejects_bad_schema_400(self, client: TestClient):
+        _seed_tenant(client, TENANT_A)
         good = _manifest(_export(client, TENANT_A))
         good["metadata"]["schema_version"] = "9.9"  # incompatible major
         r = client.post(
@@ -295,10 +362,12 @@ class TestRoundtrip:
 class TestTenantIsolation:
     def test_import_by_b_does_not_touch_a(self, client: TestClient):
         """A's data, imported under B's credentials, must not appear in or
-        alter A's store."""
-        _seed_stores(server_module)
+        alter A's store (and must land in B's store)."""
+        _seed_tenant(client, TENANT_A)
         a_before = _export(client, TENANT_A)
         a_counts_before = a_before["counts"]
+        # B starts empty: scoped isolation, not just non-mutation.
+        assert _export(client, TENANT_B)["counts"] == dict.fromkeys(TIER_KEYS, 0)
 
         # B imports A's exported manifest under B's tenant.
         r = client.post(
@@ -307,6 +376,7 @@ class TestTenantIsolation:
             headers=TENANT_B,
         )
         assert r.status_code == 200, r.text
+        assert r.json()["imported"] == a_counts_before
 
         a_after = _export(client, TENANT_A)
         assert a_after["counts"] == a_counts_before, (
@@ -319,10 +389,13 @@ class TestTenantIsolation:
             before_set = _record_content_set(m_before[tier], DETERMINISTIC_FIELDS[tier])
             after_set = _record_content_set(m_after[tier], DETERMINISTIC_FIELDS[tier])
             assert before_set == after_set
+        # B's store received the import (proves writes went to the caller's
+        # scoped store, not a shared one).
+        assert _export(client, TENANT_B)["counts"] == a_counts_before
 
     def test_merge_false_by_b_never_wipes_a(self, client: TestClient):
         """merge=False import under B must not wipe A's seeded data."""
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         a_before = _export(client, TENANT_A)
         r = client.post(
             "/api/v1/memory/import",
@@ -336,14 +409,15 @@ class TestTenantIsolation:
             "tenant A's store was wiped/changed by tenant B's merge=False import"
         )
 
-    def test_export_reflects_only_caller_tenant_state(self, client: TestClient):
-        """Export is deterministic per store state: exporting from any
-        tenant header returns the same (tenant-scoped) manifest content."""
-        _seed_stores(server_module)
+    def test_export_scoped_to_caller_tenant_only(self, client: TestClient):
+        """Export is tenant-scoped: A's seeded data is visible to A only,
+        and B's export is empty (AC2: cross-tenant export leak closed)."""
+        _seed_tenant(client, TENANT_A)
         m_a = _manifest(_export(client, TENANT_A))
         m_b = _manifest(_export(client, TENANT_B))
         for tier in TIER_KEYS:
-            assert [rec["id"] for rec in m_a[tier]] == [rec["id"] for rec in m_b[tier]]
+            assert len(m_a[tier]) == _SEED_COUNTS[tier]
+            assert m_b[tier] == [], f"tenant B exported tenant A's {tier} data"
 
 
 # ─── 3. Format stability: two consecutive exports agree ───────────────────────
@@ -351,7 +425,7 @@ class TestTenantIsolation:
 
 class TestFormatStability:
     def test_consecutive_exports_same_schema(self, client: TestClient):
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         e1 = _export(client, TENANT_A)
         e2 = _export(client, TENANT_A)
 
@@ -366,7 +440,7 @@ class TestFormatStability:
 
     def test_consecutive_exports_deterministic_fields_equal(self, client: TestClient):
         """Same deterministic content in both exports (id/timestamp excluded)."""
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         m1 = _manifest(_export(client, TENANT_A))
         m2 = _manifest(_export(client, TENANT_A))
         for tier in TIER_KEYS:
@@ -376,7 +450,7 @@ class TestFormatStability:
 
     def test_export_stable_across_tiers(self, client: TestClient):
         """Per-tier key stability: every record carries its canonical id/type."""
-        _seed_stores(server_module)
+        _seed_tenant(client, TENANT_A)
         m = _manifest(_export(client, TENANT_A))
         for tier in TIER_KEYS:
             for rec in m[tier]:
