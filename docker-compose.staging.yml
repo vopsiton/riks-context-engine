@@ -7,9 +7,13 @@ services:
   staging:
     profiles:
       - staging
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # No `build:` section on purpose (#159): the image is the CI-published
+    # one, pulled/retagged to `riks-context-engine:staging` by
+    # scripts/staging.sh start (GHCR `staging-<sha>` resolution +
+    # drift-guarded local-build fallback). Without a build: section, compose
+    # uses the local image and fails fast (pull: missing) instead of
+    # silently re-building with the checked-in amd64 Dockerfile on an arm64
+    # host (the 'exec format error' root cause, AC5).
     image: riks-context-engine:staging
     container_name: riks-context-engine-staging
     environment:

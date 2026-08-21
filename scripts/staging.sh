@@ -12,13 +12,25 @@
 # binary as fallback (detected via `command -v`).
 #
 # STAGING_API_URL is read from .env.staging (default http://localhost:8001).
+#
+# Shared helpers (GHCR staging-<sha> resolution, host-arch detection,
+# drift-guarded local-build fallback) live in scripts/lib/staging-common.sh
+# and are shared with scripts/test-staging.sh (#159).
 # =============================================================================
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_DIR"
+
 STAGING_CONTAINER="riks-context-engine-staging"
 ENV_FILE=".env.staging"
 ENV_EXAMPLE=".env.staging.example"
+STAGING_DATA_VOLUME="staging-data"
+
+# shellcheck source=scripts/lib/staging-common.sh
+. "$SCRIPT_DIR/lib/staging-common.sh"
 
 # ── Compose resolver (plugin first, legacy fallback) ─────────────────────────
 
@@ -63,44 +75,50 @@ compose_up() {
     $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" --profile staging up -d
 }
 
+compose_down() {
+    # --profile staging: `down` without the profile only removes profile-less
+    # services (dev/prod) and leaves the staged container running.
+    $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" --profile staging down 2>/dev/null || true
+}
+
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 start_staging() {
+    local rebuild=0
+    for arg in "$@"; do
+        case "$arg" in
+            --rebuild)
+                rebuild=1
+                ;;
+            *)
+                echo "ERROR: unknown start option '${arg}' (usage: staging.sh start [--rebuild])" >&2
+                exit 1
+                ;;
+        esac
+    done
+
     resolve_compose
     resolve_staging_api_url
 
     echo "==> Starting staging environment (API: ${STAGING_API_URL})..."
 
+    if [ "$rebuild" -eq 1 ]; then
+        # --rebuild: skip the CI pull entirely; build locally for the host
+        # arch (arm64 hosts: Dockerfile.arm64 with drift guard — AC5).
+        ensure_staging_image_force_rebuild
+    fi
+
     if docker ps --format '{{.Names}}' | grep -q "^${STAGING_CONTAINER}$"; then
         echo "Staging container already running. Skipping up."
     else
-        # The image is built per-architecture by the CI/CD pipeline (#156:
-        # amd64 for CI, arm64 for arm64 hosts) and published to GHCR.
-        # A local `compose up` with `build:` would re-build for the host
-        # arch; on a host whose local images are a different arch this
-        # fails with 'exec format error'. Pull the host-arch image
-        # explicitly instead (the compose file's build: is only a fallback
-        # for local dev).
-        local host_arch
-        host_arch="$(uname -m)"
-        case "$host_arch" in
-            aarch64 | arm64) host_arch="arm64" ;;
-            x86_64) host_arch="amd64" ;;
-        esac
-        local ghcr_image="ghcr.io/vopsiton/riks-context-engine:staging"
-        echo "==> Pulling ${ghcr_image} (${host_arch})..."
-        if ! docker pull --platform "linux/${host_arch}" "$ghcr_image" 2>/dev/null; then
-            echo "WARNING: GHCR pull failed (network/permissions?). Falling back to local build."
-            echo "  Local build on arm64 hosts needs the arm64 Dockerfile variant:
-    python3 scripts/gen_dockerfile_arm64.py > Dockerfile.arm64
-    docker build --platform linux/arm64 -f Dockerfile.arm64 -t riks-context-engine:staging ."
-            if [ "$host_arch" = "arm64" ] && [ ! -f Dockerfile.arm64 ]; then
-                python3 scripts/gen_dockerfile_arm64.py > Dockerfile.arm64
-                docker build --platform linux/arm64 -f Dockerfile.arm64 -t riks-context-engine:staging .
-            else
-                $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" build staging || true
-            fi
-        fi
+        # The image is built per-architecture by the CI/CD pipeline (#156)
+        # and published to GHCR as `staging-<sha>` (cd.yml deploy-staging).
+        # Resolution order (#159): STAGING_SHA env → git HEAD short sha →
+        # floating `staging` tag (warning). Never let compose re-build from
+        # the checked-in amd64 Dockerfile on an arm64 host (exec format
+        # error): the compose file no longer has a build: section, and the
+        # fallback path here builds with the arch-correct Dockerfile.
+        ensure_staging_image
         compose_up
     fi
 
@@ -125,20 +143,37 @@ start_staging() {
 }
 
 stop_staging() {
+    local purge=0
+    for arg in "$@"; do
+        case "$arg" in
+            --purge)
+                purge=1
+                ;;
+            *)
+                echo "ERROR: unknown stop option '${arg}' (usage: staging.sh stop [--purge])" >&2
+                exit 1
+                ;;
+        esac
+    done
+
     resolve_compose
     echo "==> Stopping staging environment..."
-    # Note: --volumes would destroy the staging-data volume (persistence
-    # lifecycle is handled by #159, not here).
-    # Without --profile staging, `down` only removes profile-less services
-    # (dev/prod) and leaves the staged container running — always pass the
-    # profile so the staged container is actually stopped.
-    $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" --profile staging down 2>/dev/null || true
-    echo "✓ Staging stopped."
+    # Plain stop keeps the staging-data volume (persistence, #159);
+    # --purge also removes it (explicit, user-initiated data loss).
+    compose_down
+    if [ "$purge" -eq 1 ]; then
+        echo "==> Purging staging data volume '${STAGING_DATA_VOLUME}'..."
+        docker volume rm "$STAGING_DATA_VOLUME" 2>/dev/null || \
+            docker volume rm "riks-context-engine_${STAGING_DATA_VOLUME}" 2>/dev/null || true
+        echo "✓ Staging stopped and data volume purged."
+    else
+        echo "✓ Staging stopped (data volume preserved)."
+    fi
 }
 
 restart_staging() {
     stop_staging
-    start_staging
+    start_staging "$@"
 }
 
 status_staging() {
@@ -154,6 +189,53 @@ status_staging() {
     fi
     echo ""
     echo "API Health: $(curl -sf "${STAGING_API_URL}/health" 2>/dev/null || echo 'unavailable')"
+}
+
+smoke_staging() {
+    resolve_staging_api_url
+    echo "==> Smoke testing ${STAGING_API_URL}..."
+
+    # 1) Health endpoint must answer 200 (unauthenticated).
+    local health_code
+    health_code="$(curl -s -o /dev/null -w '%{http_code}' "${STAGING_API_URL}/health")"
+    if [ "$health_code" != "200" ]; then
+        echo "FAIL: /health returned ${health_code} (expected 200)." >&2
+        exit 1
+    fi
+    echo "✓ /health → 200"
+
+    # 2) Fail-closed auth (#166): a protected endpoint without an API key
+    #    must be rejected (401/403). With a key from .env.staging it must
+    #    be served (200) — proves the key actually works.
+    local protected_code
+    protected_code="$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Tenant-Id: smoke-test' "${STAGING_API_URL}/api/v1/memory/export?format=json")"
+    case "$protected_code" in
+        401 | 403)
+            echo "✓ /api/v1/memory/export without key → ${protected_code} (fail-closed auth OK)"
+            ;;
+        *)
+            echo "FAIL: /api/v1/memory/export without key returned ${protected_code} (expected 401/403 — auth NOT fail-closed)." >&2
+            exit 1
+            ;;
+    esac
+
+    local api_key=""
+    if [ -f "$ENV_FILE" ]; then
+        api_key="$(sed -n 's/^STAGING_API_KEY=//p' "$ENV_FILE" 2>/dev/null | tail -n1)"
+    fi
+    if [ -n "$api_key" ]; then
+        local authed_code
+        authed_code="$(curl -s -o /dev/null -w '%{http_code}' -H "X-API-Key: ${api_key}" -H 'X-Tenant-Id: smoke-test' "${STAGING_API_URL}/api/v1/memory/export?format=json")"
+        if [ "$authed_code" != "200" ]; then
+            echo "FAIL: /api/v1/memory/export with STAGING_API_KEY returned ${authed_code} (expected 200)." >&2
+            exit 1
+        fi
+        echo "✓ /api/v1/memory/export with key → 200 (authed path OK)"
+    else
+        echo "NOTE: no STAGING_API_KEY in ${ENV_FILE}; authed path not checked."
+    fi
+
+    echo "✓ Smoke test passed."
 }
 
 logs_staging() {
@@ -194,19 +276,29 @@ show_help() {
 Usage: ./scripts/staging.sh <command>
 
 Commands:
-  start     Start staging environment (overlay: base + staging compose)
-  stop      Stop staging environment (data volume preserved)
-  restart   Restart staging environment
+  start [--rebuild]  Start staging (idempotent; --rebuild: local build,
+                     skipping the CI image pull — arm64 hosts build with
+                     the drift-guarded Dockerfile.arm64)
+  stop [--purge]     Stop staging (data volume preserved; --purge deletes
+                     the staging-data volume)
+  restart [--rebuild]  Restart staging (passes flags through)
   status    Show staging status + health
+  smoke     Smoke test: /health 200 + fail-closed auth (401 without key,
+            200 with STAGING_API_KEY)
   logs      Tail staging logs
   test      Run tests against staging
   help      Show this help
 
 Env: STAGING_API_URL is read from .env.staging (default http://localhost:8001).
+     STAGING_SHA selects the CI image tag staging-<sha> (default: git HEAD
+     short sha; fallback: floating `staging` tag with a warning).
 
 Examples:
   ./scripts/staging.sh start
+  ./scripts/staging.sh start --rebuild
+  ./scripts/staging.sh stop --purge
   ./scripts/staging.sh status
+  ./scripts/staging.sh smoke
   ./scripts/staging.sh logs
   ./scripts/staging.sh test
 EOF
@@ -215,12 +307,14 @@ EOF
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 COMMAND="${1:-help}"
+shift || true
 
 case "$COMMAND" in
-    start)      start_staging ;;
-    stop)       stop_staging ;;
-    restart)    restart_staging ;;
+    start)      start_staging "$@" ;;
+    stop)       stop_staging "$@" ;;
+    restart)    restart_staging "$@" ;;
     status)     status_staging ;;
+    smoke)      smoke_staging ;;
     logs)       logs_staging ;;
     test)       test_staging ;;
     help)       show_help ;;
