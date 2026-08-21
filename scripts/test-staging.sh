@@ -15,6 +15,11 @@ ENV_FILE=".env.staging"
 ENV_EXAMPLE=".env.staging.example"
 RESULTS_DIR="test-results"
 
+# Shared helpers (#159): GHCR staging-<sha> resolution + drift-guarded
+# local-build fallback, shared with scripts/staging.sh.
+# shellcheck source=scripts/lib/staging-common.sh
+. "$SCRIPT_DIR/lib/staging-common.sh"
+
 # ── Compose resolver (plugin first, legacy fallback) ─────────────────────────
 
 resolve_compose() {
@@ -61,25 +66,12 @@ start_staging() {
     resolve_staging_api_url
     echo "==> Starting STAGING environment (API: ${STAGING_API_URL})..."
     # Overlay stack: base + staging (staging service, port 8001).
-    # Image: GHCR (host-arch) preferred, local build fallback (see
-    # scripts/staging.sh start_staging for the same logic).
+    # Image (#159): CI image `staging-<sha>` (STAGING_SHA env → git HEAD →
+    # floating tag) preferred, no `--build` on the default path: local
+    # CI image → pull → pre-existing local image → drift-guarded local
+    # build (same behavior as scripts/staging.sh start).
     if ! docker ps --format '{{.Names}}' | grep -q "^riks-context-engine-staging$"; then
-        local host_arch
-        host_arch="$(uname -m)"
-        case "$host_arch" in
-            aarch64 | arm64) host_arch="arm64" ;;
-            x86_64) host_arch="amd64" ;;
-        esac
-        local ghcr_image="ghcr.io/vopsiton/riks-context-engine:staging"
-        if ! docker pull --platform "linux/${host_arch}" "$ghcr_image" 2>/dev/null; then
-            echo "WARNING: GHCR pull failed; local build fallback."
-            if [ "$host_arch" = "arm64" ] && [ ! -f Dockerfile.arm64 ]; then
-                python3 scripts/gen_dockerfile_arm64.py > Dockerfile.arm64
-                docker build --platform linux/arm64 -f Dockerfile.arm64 -t riks-context-engine:staging .
-            else
-                $COMPOSE -f docker-compose.yml -f docker-compose.staging.yml --env-file "$ENV_FILE" build staging || true
-            fi
-        fi
+        ensure_staging_image
     fi
     compose_up
     echo "==> Waiting for staging to be healthy..."
