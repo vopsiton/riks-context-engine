@@ -56,7 +56,9 @@ def client():
     original_key = server.API_KEY
     server.API_KEY = "test-api-key"
     try:
-        with TestClient(app, headers={"X-Tenant-Id": "test-tenant", "X-API-Key": "test-api-key"}) as c:
+        with TestClient(
+            app, headers={"X-Tenant-Id": "test-tenant", "X-API-Key": "test-api-key"}
+        ) as c:
             yield c
     finally:
         server.API_KEY = original_key
