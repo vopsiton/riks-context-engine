@@ -208,7 +208,9 @@ class TestRBAC:
         # Admin opt-in: an admin API key may read another tenant's log.
         monkeypatch.setenv("RIKS_AUDIT_ADMIN", "1")
         monkeypatch.setenv("RIKS_ADMIN_API_KEYS", "admin-key")
-        monkeypatch.setattr(server_module, "API_KEY", "test-api-key")  # API key set (fail-closed, #166)
+        monkeypatch.setattr(
+            server_module, "API_KEY", "test-api-key"
+        )  # API key set (fail-closed, #166)
 
         # Seed tenant-x's log.
         client.get("/api/v1/context/summary", headers={"X-Tenant-Id": "tenant-x"})
@@ -230,7 +232,9 @@ class TestRBAC:
         # A non-admin caller cannot use ?tenant= to read someone else's log.
         monkeypatch.setenv("RIKS_AUDIT_ADMIN", "1")
         monkeypatch.setenv("RIKS_ADMIN_API_KEYS", "admin-key")
-        monkeypatch.setattr(server_module, "API_KEY", "test-api-key")  # API key set (fail-closed, #166)
+        monkeypatch.setattr(
+            server_module, "API_KEY", "test-api-key"
+        )  # API key set (fail-closed, #166)
 
         client.get("/api/v1/context/summary", headers={"X-Tenant-Id": "tenant-x"})
         # Regular user (no admin key) asking for tenant-x stays on their own.
