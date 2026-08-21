@@ -30,5 +30,15 @@ def client():
     lets API calls through. Tests asserting tenant validation (401)
     should pass explicit headers to override this default.
     """
-    with TestClient(app, headers={"X-Tenant-Id": "test-tenant"}) as c:
-        yield c
+    import riks_context_engine.api.server as server
+
+    # Set API_KEY for tests (fail-closed, #166).
+    original_key = server.API_KEY
+    server.API_KEY = "test-api-key"
+    try:
+        with TestClient(
+            app, headers={"X-Tenant-Id": "test-tenant", "X-API-Key": "test-api-key"}
+        ) as c:
+            yield c
+    finally:
+        server.API_KEY = original_key

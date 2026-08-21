@@ -31,8 +31,15 @@ def _reset_tenants(tmp_path):
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
-        yield c
+    import riks_context_engine.api.server as server
+
+    original_key = server.API_KEY
+    server.API_KEY = "test-api-key"
+    try:
+        with TestClient(app, headers={"X-API-Key": "test-api-key"}) as c:
+            yield c
+    finally:
+        server.API_KEY = original_key
 
 
 TENANT_A = {"X-Tenant-Id": "e2e-tenant-a"}
