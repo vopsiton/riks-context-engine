@@ -81,13 +81,18 @@ class PostgresSemanticMemory:
         object: str | None = None,
         confidence: float = 1.0,
         embedding: list[float] | None = None,
+        id: str | None = None,
     ) -> SemanticEntry:
-        """Add a semantic knowledge entry."""
+        """Add a semantic knowledge entry.
+
+        ``id`` is preserved when explicitly given (e.g. by the import path,
+        #180); otherwise a uuid id is generated as before.
+        """
         now = datetime.now(timezone.utc)
         # uuid4 id: the former f"sm_{now.timestamp()}" collided when concurrent
         # writes shared a microsecond (UNIQUE constraint failure, entry loss).
         entry = SemanticEntry(
-            id=f"sm_{uuid.uuid4().hex}",
+            id=id if id is not None else f"sm_{uuid.uuid4().hex}",
             subject=subject,
             predicate=predicate,
             object=object,

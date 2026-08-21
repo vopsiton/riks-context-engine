@@ -201,31 +201,44 @@ def _check_schema_compat(ver: str) -> None:
 
 
 def _deserialize_episodic(data: dict[str, Any]) -> dict[str, Any]:
-    return {
+    # Preserve the manifest id when present (#180): dropping it made the
+    # store generate a timestamp id, which defeated merge=True's
+    # existing-id dedupe. Records without an id keep the legacy behavior
+    # (store generates one).
+    out: dict[str, Any] = {
         "content": data["content"],
         "importance": data.get("importance", 0.5),
         "tags": data.get("tags"),
         "embedding": data.get("embedding"),
     }
+    if "id" in data:
+        out["id"] = data["id"]
+    return out
 
 
 def _deserialize_semantic(data: dict[str, Any]) -> dict[str, Any]:
-    return {
+    out = {
         "subject": data["subject"],
         "predicate": data["predicate"],
         "object": data.get("object"),
         "confidence": data.get("confidence", 1.0),
         "embedding": data.get("embedding"),
     }
+    if "id" in data:
+        out["id"] = data["id"]
+    return out
 
 
 def _deserialize_procedural(data: dict[str, Any]) -> dict[str, Any]:
-    return {
+    out: dict[str, Any] = {
         "name": data["name"],
         "description": data.get("description", ""),
         "steps": data.get("steps", []),
         "tags": data.get("tags", []),
     }
+    if "id" in data:
+        out["id"] = data["id"]
+    return out
 
 
 def import_to_memory(
@@ -246,11 +259,11 @@ def import_to_memory(
         else:
             existing_ids = set(episodic_memory.entries.keys())
         for entry_data in manifest.episodic:
-            if entry_data["id"] in existing_ids:
+            if entry_data.get("id") in existing_ids:
                 continue
             kwargs = _deserialize_episodic(entry_data)
-            episodic_memory.add(**kwargs)
-            existing_ids.add(entry_data["id"])
+            entry = episodic_memory.add(**kwargs)
+            existing_ids.add(entry.id)
             imported["episodic"] += 1
 
     if semantic_memory is not None:
@@ -263,11 +276,11 @@ def import_to_memory(
             for row in semantic_memory.query():
                 existing_ids.add(row.id)
         for entry_data in manifest.semantic:
-            if entry_data["id"] in existing_ids:
+            if entry_data.get("id") in existing_ids:
                 continue
             kwargs = _deserialize_semantic(entry_data)
-            semantic_memory.add(**kwargs)
-            existing_ids.add(entry_data["id"])
+            entry = semantic_memory.add(**kwargs)
+            existing_ids.add(entry.id)
             imported["semantic"] += 1
 
     if procedural_memory is not None:
@@ -278,11 +291,11 @@ def import_to_memory(
         else:
             existing_ids = set(procedural_memory.procedures.keys())
         for entry_data in manifest.procedural:
-            if entry_data["id"] in existing_ids:
+            if entry_data.get("id") in existing_ids:
                 continue
             kwargs = _deserialize_procedural(entry_data)
-            procedural_memory.store(**kwargs)
-            existing_ids.add(entry_data["id"])
+            proc = procedural_memory.store(**kwargs)
+            existing_ids.add(proc.id)
             imported["procedural"] += 1
 
     return imported
