@@ -50,8 +50,16 @@ def client():
     lets API calls through. Tests asserting tenant validation (401)
     should pass explicit headers to override this default.
     """
-    with TestClient(app, headers={"X-Tenant-Id": "test-tenant"}) as c:
-        yield c
+    import riks_context_engine.api.server as server
+
+    # Set API_KEY for tests (fail-closed, #166).
+    original_key = server.API_KEY
+    server.API_KEY = "test-api-key"
+    try:
+        with TestClient(app, headers={"X-Tenant-Id": "test-tenant", "X-API-Key": "test-api-key"}) as c:
+            yield c
+    finally:
+        server.API_KEY = original_key
 
 
 @pytest.fixture
@@ -81,11 +89,11 @@ class TestApiKeyAuth:
         )
         assert res.status_code == 200
 
-    def test_no_api_key_configured_stays_open(self, client: TestClient):
-        # No API_KEY configured -> protected paths remain open (no breaking
-        # change, local dev behavior preserved).
+    def test_no_api_key_configured_fail_closed(self, client: TestClient):
+        # No API_KEY configured -> fail-closed (401), #166.
+        # Open mode only for RIKS_ENV=local.
         res = client.get("/api/v1/context/summary", headers={"X-Tenant-Id": "tenant-b"})
-        assert res.status_code == 200
+        assert res.status_code == 401
 
 
 class TestAuditLog:

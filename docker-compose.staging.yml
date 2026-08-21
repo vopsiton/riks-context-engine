@@ -21,6 +21,7 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - LOG_LEVEL=DEBUG
       - TEST_MODE=true
+      - API_KEY=${STAGING_API_KEY:-staging-default-key}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
