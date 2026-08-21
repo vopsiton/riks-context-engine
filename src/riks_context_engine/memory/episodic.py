@@ -99,11 +99,16 @@ class EpisodicMemory:
         importance: float = 0.5,
         tags: list[str] | None = None,
         embedding: list[float] | None = None,
+        id: str | None = None,
     ) -> EpisodicEntry:
-        """Add an episodic memory entry."""
+        """Add an episodic memory entry.
+
+        ``id`` is preserved when explicitly given (e.g. by the import path,
+        #180); otherwise a timestamp id is generated as before.
+        """
         now = datetime.now(timezone.utc)
         entry = EpisodicEntry(
-            id=f"ep_{now.timestamp()}",
+            id=id if id is not None else f"ep_{now.timestamp()}",
             timestamp=now,
             content=content,
             importance=importance,

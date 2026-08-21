@@ -109,11 +109,16 @@ class ProceduralMemory:
         description: str,
         steps: list[str],
         tags: list[str] | None = None,
+        id: str | None = None,
     ) -> Procedure:
-        """Store a new procedure."""
+        """Store a new procedure.
+
+        ``id`` is preserved when explicitly given (e.g. by the import path,
+        #180); otherwise a timestamp id is generated as before.
+        """
         now = datetime.now(timezone.utc)
         proc = Procedure(
-            id=f"pr_{now.timestamp()}",
+            id=id if id is not None else f"pr_{now.timestamp()}",
             name=name,
             description=description,
             steps=steps,
