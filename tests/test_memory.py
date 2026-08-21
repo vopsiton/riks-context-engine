@@ -372,9 +372,7 @@ class TestCrossProcessConcurrency:
             # A worker that crashed (e.g. UNIQUE constraint violation) would
             # otherwise be invisible and only show up as a missing entry.
             assert all(p.exitcode == 0 for p in procs), [
-                f"proc{p.pid} exited {p.exitcode}"
-                for p in procs
-                if p.exitcode != 0
+                f"proc{p.pid} exited {p.exitcode}" for p in procs if p.exitcode != 0
             ]
             mem = SemanticMemory(db_path=db_path)
             entries = mem.query()
