@@ -91,9 +91,12 @@ class TestApiKeyAuth:
         )
         assert res.status_code == 200
 
-    def test_no_api_key_configured_fail_closed(self, client: TestClient):
+    def test_no_api_key_configured_fail_closed(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ):
         # No API_KEY configured -> fail-closed (401), #166.
         # Open mode only for RIKS_ENV=local.
+        monkeypatch.setattr(server_module, "API_KEY", "")
         res = client.get("/api/v1/context/summary", headers={"X-Tenant-Id": "tenant-b"})
         assert res.status_code == 401
 
@@ -139,7 +142,7 @@ class TestAuditLog:
         assert all(e["tenant"] == "tenant-b" for e in log_b["entries"])
 
     def test_audit_pagination(self, client: TestClient, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(server_module, "API_KEY", "")  # open mode
+        # API_KEY already set in client fixture ("test-api-key").
         tenant = "tenant-page"
         for _ in range(5):
             client.get("/api/v1/context/summary", headers={"X-Tenant-Id": tenant})
@@ -205,13 +208,14 @@ class TestRBAC:
         # Admin opt-in: an admin API key may read another tenant's log.
         monkeypatch.setenv("RIKS_AUDIT_ADMIN", "1")
         monkeypatch.setenv("RIKS_ADMIN_API_KEYS", "admin-key")
-        monkeypatch.setattr(server_module, "API_KEY", "")  # open auth mode
+        monkeypatch.setattr(server_module, "API_KEY", "test-api-key")  # API key set (fail-closed, #166)
 
         # Seed tenant-x's log.
         client.get("/api/v1/context/summary", headers={"X-Tenant-Id": "tenant-x"})
 
         # An admin (key present) reading tenant-x while authenticated as
         # tenant-y: the ?tenant= param overrides to tenant-x.
+        # Use admin-key (in RIKS_ADMIN_API_KEYS) for the ?tenant= override.
         admin_log = client.get(
             "/api/v1/audit",
             headers={"X-Tenant-Id": "tenant-y", "X-API-Key": "admin-key"},
@@ -226,13 +230,13 @@ class TestRBAC:
         # A non-admin caller cannot use ?tenant= to read someone else's log.
         monkeypatch.setenv("RIKS_AUDIT_ADMIN", "1")
         monkeypatch.setenv("RIKS_ADMIN_API_KEYS", "admin-key")
-        monkeypatch.setattr(server_module, "API_KEY", "")  # open auth mode
+        monkeypatch.setattr(server_module, "API_KEY", "test-api-key")  # API key set (fail-closed, #166)
 
         client.get("/api/v1/context/summary", headers={"X-Tenant-Id": "tenant-x"})
         # Regular user (no admin key) asking for tenant-x stays on their own.
         log = client.get(
             "/api/v1/audit",
-            headers={"X-Tenant-Id": "tenant-y", "X-API-Key": "not-admin"},
+            headers={"X-Tenant-Id": "tenant-y", "X-API-Key": "test-api-key"},
             params={"tenant": "tenant-x"},
         ).json()
         assert log["tenant"] == "tenant-y"
