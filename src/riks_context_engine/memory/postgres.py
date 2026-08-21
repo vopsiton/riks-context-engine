@@ -9,6 +9,7 @@ of a local SQLite file. Requires the ``postgres`` extra::
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -83,8 +84,10 @@ class PostgresSemanticMemory:
     ) -> SemanticEntry:
         """Add a semantic knowledge entry."""
         now = datetime.now(timezone.utc)
+        # uuid4 id: the former f"sm_{now.timestamp()}" collided when concurrent
+        # writes shared a microsecond (UNIQUE constraint failure, entry loss).
         entry = SemanticEntry(
-            id=f"sm_{now.timestamp()}",
+            id=f"sm_{uuid.uuid4().hex}",
             subject=subject,
             predicate=predicate,
             object=object,
