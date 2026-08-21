@@ -26,7 +26,14 @@ VALID_TENANT_B = "tenant-b"
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    import riks_context_engine.api.server as server
+
+    original_key = server.API_KEY
+    server.API_KEY = "test-api-key"
+    try:
+        yield TestClient(app, headers={"X-API-Key": "test-api-key"})
+    finally:
+        server.API_KEY = original_key
 
 
 def _headers(tenant: str | None = VALID_TENANT) -> dict[str, str]:

@@ -144,9 +144,9 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 
     - When an ``API_KEY`` is configured, every protected path requires a
       matching ``X-API-Key`` header; missing/mismatched -> ``401``.
-    - When no ``API_KEY`` is configured, protected paths are open (local
-      dev) — preserved from prior behavior so existing dev/CI flows do not
-      break (no breaking change, #110).
+    - When no ``API_KEY`` is configured, protected paths return ``401``
+      (fail-closed, #166). Open mode is ONLY for local development
+      (``RIKS_ENV=local``).
     - Stores the presented key on ``request.state.api_key`` so the audit
       middleware can derive the caller's role.
     """
@@ -155,8 +155,13 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         api_key = request.headers.get("X-API-Key")
         request.state.api_key = api_key
-        if path in _API_KEY_PROTECTED_PATHS and API_KEY:
-            if api_key != API_KEY:
+        if path in _API_KEY_PROTECTED_PATHS:
+            # Fail-closed: if API_KEY is not configured, deny access (#166).
+            # Open mode is ONLY for local development (RIKS_ENV=local).
+            if not API_KEY:
+                if os.environ.get("RIKS_ENV") != "local":
+                    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+            elif api_key != API_KEY:
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
         return await call_next(request)
 
