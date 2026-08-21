@@ -862,16 +862,25 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
 
 
 @app.get("/", include_in_schema=False)
-def root() -> FileResponse | MemoryExportResponse:
+async def root(request: Request) -> Response:
     """UI index, or a memory export when the UI is not deployed.
 
     Excluded from the OpenAPI spec (#123): the canonical export endpoint is
     GET /api/v1/memory/export; this alias preserves legacy behavior.
+    Tenant-scoped via X-Tenant-Id (#184): exports the caller's own memory.
+    Non-tenant callers (e.g. unauthenticated health-check UI loads) get
+    the UI; only authenticated tenant calls take the export branch.
+
+    Returns a Response object directly (no pydantic serialization) because
+    it mixes JSON (MemoryExportResponse) and file (FileResponse) payloads.
     """
-    if _episodic_memory is not None and not os.path.exists(
-        os.environ.get("UI_PATH", "ui/index.html")
+    if (
+        _episodic_memory is not None
+        and not os.path.exists(os.environ.get("UI_PATH", "ui/index.html"))
+        and getattr(request.state, "tenant_id", None) is not None
     ):
-        return _export_memory(None, "json", None, None, None)
+        export = _export_memory(request, None, "json", None, None, None, request.state.tenant_id)
+        return JSONResponse(export.model_dump())
     return FileResponse(os.environ.get("UI_PATH", "ui/index.html"))
 
 
@@ -965,19 +974,26 @@ class MemoryImportResponse(BaseModel):
 
 
 def _export_memory(
+    request: Request,
     types: str | None,
     format: Literal["json", "yaml"],
     date_from: datetime | None,
     date_to: datetime | None,
     tags: list[str] | None,
+    tenant_id: str,
 ) -> MemoryExportResponse:
-    """Shared export logic (canonical endpoint + GET / alias)."""
+    """Shared export logic (canonical endpoint + GET / alias).
+
+    Tenant-scoped (#184): reads the caller's per-tenant memory stores from
+    the tenant-scoped registry (same pattern as /api/chat, #158), NOT the
+    module-level singletons.
+    """
     include_types = [t.strip() for t in types.split(",")] if types else None
 
     manifest = export_memory(
-        episodic_memory=_episodic_memory,
-        semantic_memory=_semantic_memory,
-        procedural_memory=_procedural_memory,
+        episodic_memory=_tenant_memory_registry.get_episodic(tenant_id),
+        semantic_memory=_tenant_memory_registry.get_semantic(tenant_id),
+        procedural_memory=_tenant_memory_registry.get_procedural(tenant_id),
         include_types=include_types,
         date_from=date_from,
         date_to=date_to,
@@ -1001,6 +1017,7 @@ def _export_memory(
 
 @app.get("/api/v1/memory/export", response_model=MemoryExportResponse, tags=["memory"])
 def export_memory_api(
+    request: Request,
     types: Annotated[
         str | None,
         Query(description="Comma-separated types: episodic,semantic,procedural"),
@@ -1020,12 +1037,19 @@ def export_memory_api(
     if format is None:
         format = "json"
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
-    return _export_memory(types, format, date_from, date_to, tag_list)
+    tenant_id: str = request.state.tenant_id  # set by TenantAuthMiddleware
+    return _export_memory(request, types, format, date_from, date_to, tag_list, tenant_id)
 
 
 @app.post("/api/v1/memory/import", response_model=MemoryImportResponse, tags=["memory"])
-def import_memory_api(req: MemoryImportRequest) -> MemoryImportResponse:
-    """Import memory tiers from a JSON or YAML manifest (tenant-scoped)."""
+def import_memory_api(req: MemoryImportRequest, request: Request) -> MemoryImportResponse:
+    """Import memory tiers from a JSON or YAML manifest (tenant-scoped, #184).
+
+    Writes into the caller's per-tenant stores from the tenant-scoped
+    registry (same pattern as /api/chat, #158), so one tenant's import can
+    never leak into another tenant's memory.
+    """
+    tenant_id: str = request.state.tenant_id  # set by TenantAuthMiddleware
     try:
         manifest = parse_manifest(req.content, req.format)
     except ValueError as e:
@@ -1033,15 +1057,14 @@ def import_memory_api(req: MemoryImportRequest) -> MemoryImportResponse:
 
     imported = import_to_memory(
         manifest,
-        episodic_memory=_episodic_memory,
-        semantic_memory=_semantic_memory,
-        procedural_memory=_procedural_memory,
+        episodic_memory=_tenant_memory_registry.get_episodic(tenant_id),
+        semantic_memory=_tenant_memory_registry.get_semantic(tenant_id),
+        procedural_memory=_tenant_memory_registry.get_procedural(tenant_id),
         merge=req.merge,
     )
     # Critical-operation audit (memory.add/import) — in-process hook (#110).
     try:
-        _audit_tenant = os.environ.get("RIKS_TENANT_ID", "").strip() or "unauthenticated"
-        get_audit_log(_audit_tenant).record_operation(
+        get_audit_log(tenant_id).record_operation(
             CRITICAL_MEMORY_IMPORT,
             endpoint="/api/v1/memory/import",
             method="POST",
