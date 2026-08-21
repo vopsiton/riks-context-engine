@@ -341,11 +341,23 @@ def _semantic_writer(db_path: str, prefix: str, count: int) -> None:
 
 
 class TestCrossProcessConcurrency:
-    """4 processes x 25 writes → 100 entries, no data loss."""
+    """4 processes x 25 writes → 100 entries, no data loss.
+
+    Regression test: with id = f"sm_{now.timestamp()}", concurrent writes
+    whose clock reads fell in the same microsecond produced identical ids,
+    the second INSERT failed with a UNIQUE constraint error and the entry
+    was silently lost ('Expected 100 entries, got 75'). With the uuid-based
+    id (#179 follow-up) all 100 writes must land.
+    """
+
+    @staticmethod
+    def _make_temp_db() -> str:
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        return db_path
 
     def test_concurrent_semantic_writes(self):
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = f.name
+        db_path = self._make_temp_db()
         try:
             procs = []
             for i in range(4):
@@ -357,6 +369,11 @@ class TestCrossProcessConcurrency:
                 p.start()
             for p in procs:
                 p.join(timeout=30)
+            # A worker that crashed (e.g. UNIQUE constraint violation) would
+            # otherwise be invisible and only show up as a missing entry.
+            assert all(p.exitcode == 0 for p in procs), [
+                f"proc{p.pid} exited {p.exitcode}" for p in procs if p.exitcode != 0
+            ]
             mem = SemanticMemory(db_path=db_path)
             entries = mem.query()
             assert len(entries) == 100, f"Expected 100 entries, got {len(entries)}"

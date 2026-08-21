@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -100,8 +101,14 @@ class SemanticMemory:
     ) -> SemanticEntry:
         """Add a semantic knowledge entry."""
         now = datetime.now(timezone.utc)
+        # Collision-safe id. The previous id was f"sm_{now.timestamp()}":
+        # two concurrent writes whose clock reads fell in the same microsecond
+        # produced identical ids and the second INSERT failed with a UNIQUE
+        # constraint error, silently losing the entry (observed under the
+        # cross-process concurrency test: 'Expected 100 entries, got 75').
+        # uuid4 keeps the 'sm_' prefix and never collides across processes.
         entry = SemanticEntry(
-            id=f"sm_{now.timestamp()}",
+            id=f"sm_{uuid.uuid4().hex}",
             subject=subject,
             predicate=predicate,
             object=object,
