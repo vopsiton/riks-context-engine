@@ -635,15 +635,88 @@ class WebSocketContextStreamer:
             await self.disconnect(client_id)
 
 
+# Global streamer registry: per-tenant WebSocketContextStreamer instances
+# (#170-prereq). Isolation is structural — a broadcast for tenant A can
+# never reach tenant B's sockets, mirroring the tenant registries used for
+# context/memory (#102, #158). Kept as a module global (like the other
+# registries) so it survives across tests / can be reset by fixtures.
+_ws_streamers: dict[str, WebSocketContextStreamer] = {}
+
 # Global streamer instance (created per-app in lifespan)
 _ws_streamer: WebSocketContextStreamer | None = None
 
+# ─── WebSocket auth (#170-prereq, P1) ──────────────────────────────────────────
+# The HTTP API-key/tenant middleware does NOT cover the WS handshake, so
+# unauthenticated clients could connect to /ws/v1/context/stream before this
+# fix. Fail-closed, mirroring APIKeyAuthMiddleware's contract exactly:
+# - API_KEY set: presented key (X-API-Key header OR ?api_key=... query) must
+#   match, else close 1008 (Policy Violation — the WS equivalent of 401).
+# - API_KEY unset: denied UNLESS RIKS_ENV=local (open mode = local dev only),
+#   matching the HTTP #166 behavior (/health exemption does not apply to WS).
+# Tenant: X-Tenant-Id header OR ?tenant_id=... query, validated with the same
+# validate_tenant_id() the HTTP middleware uses; failure -> close 4004.
+# Rejected connections are NEVER accepted, so they never enter
+# streamer._connections (no state leak for unauthenticated sockets).
+
+WS_CLOSE_UNAUTHORIZED = 1008  # standard WS code: Policy Violation (auth failure)
+WS_CLOSE_TENANT_REQUIRED = 4004  # private-use range: missing/malformed tenant
+
+#: Tenant id used by the legacy ``_get_streamer()`` (pre-isolation tests and
+#: any non-tenant callers). Not a real user tenant.
+_WS_LEGACY_TENANT = "__legacy__"
+
+
+def _ws_authenticate(websocket: WebSocket) -> bool:
+    """Authenticate a WS handshake attempt before accept.
+
+    Accepts the key via ``X-API-Key`` header or ``?api_key=...`` query param
+    (clients in environments where custom handshake headers are awkward can
+    use the query path). Fail-closed semantics are identical to
+    :class:`APIKeyAuthMiddleware`.
+    """
+    if not API_KEY:
+        return os.environ.get("RIKS_ENV") == "local"
+    presented = websocket.headers.get("X-API-Key")
+    if not presented:
+        presented = websocket.query_params.get("api_key")
+    if not presented:
+        return False
+    return presented == API_KEY
+
+
+def _ws_resolve_tenant(websocket: WebSocket) -> str | None:
+    """Resolve and validate the tenant for a WS handshake (fail-closed).
+
+    Returns the validated tenant id, or ``None`` when missing/malformed
+    (caller must close with :data:`WS_CLOSE_TENANT_REQUIRED`).
+    """
+    raw = websocket.headers.get(TENANT_HEADER)
+    if not raw:
+        raw = websocket.query_params.get("tenant_id")
+    if not raw:
+        return None
+    try:
+        return validate_tenant_id(raw)
+    except TenantValidationError:
+        return None
+
+
+def _get_tenant_streamer(tenant_id: str) -> WebSocketContextStreamer:
+    """Get (or create) the WebSocket streamer instance for ``tenant_id``."""
+    streamer = _ws_streamers.get(tenant_id)
+    if streamer is None:
+        streamer = WebSocketContextStreamer()
+        _ws_streamers[tenant_id] = streamer
+    return streamer
+
 
 def _get_streamer() -> WebSocketContextStreamer:
-    """Get the global WebSocket streamer instance."""
-    if _ws_streamer is None:
-        raise RuntimeError("WebSocket streamer not initialized")
-    return _ws_streamer
+    """Get a WebSocket streamer instance.
+
+    Kept for backwards compatibility (tests / legacy callers): returns the
+    per-tenant streamer registered for ``_WS_LEGACY_TENANT``.
+    """
+    return _get_tenant_streamer(_WS_LEGACY_TENANT)
 
 
 async def websocket_context_stream(websocket: WebSocket) -> None:
@@ -677,8 +750,24 @@ async def websocket_context_stream(websocket: WebSocket) -> None:
         # Heartbeat response:
         {{"type": "heartbeat", "detail": "pong"}}
 
+    Auth (#170-prereq, fail-closed): the handshake must present a valid API
+    key (``X-API-Key`` header or ``?api_key=...``) and a well-formed tenant
+    (``X-Tenant-Id`` header or ``?tenant_id=...``). Failures close the
+    socket with 1008 (no/invalid key) or 4004 (missing/malformed tenant)
+    BEFORE accept — rejected connections never enter the streamer state.
     """
-    streamer = _get_streamer()
+    # Auth + tenant MUST run before websocket.accept(): the HTTP middleware
+    # does not cover the WS handshake, so this is the only enforcement point
+    # (fail-closed, #170-prereq).
+    if not _ws_authenticate(websocket):
+        await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
+        return
+    tenant_id = _ws_resolve_tenant(websocket)
+    if tenant_id is None:
+        await websocket.close(code=WS_CLOSE_TENANT_REQUIRED, reason="Invalid or missing tenant")
+        return
+
+    streamer = _get_tenant_streamer(tenant_id)
     client_id = await streamer.connect(websocket)
 
     # Send initial connection confirmation
@@ -686,7 +775,7 @@ async def websocket_context_stream(websocket: WebSocket) -> None:
         client_id,
         WSContextUpdate(
             type="subscribed",
-            detail='Connected. Send {"type": "subscribe"} to receive updates.',
+            detail=f'Connected as tenant {tenant_id}. Send {{"type": "subscribe"}} to receive updates.',
         ),
     )
 
@@ -723,16 +812,18 @@ def _build_cors_config() -> dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    global _episodic_memory, _semantic_memory, _procedural_memory, _ws_streamer
+    global _episodic_memory, _semantic_memory, _procedural_memory, _ws_streamer, _ws_streamers
     setup_telemetry()
     data_dir = os.environ.get("DATA_DIR", "data")
     _episodic_memory = EpisodicMemory(storage_path=f"{data_dir}/episodic.json")
     _semantic_memory = SemanticMemory(db_path=f"{data_dir}/semantic.db")
     _procedural_memory = ProceduralMemory(storage_path=f"{data_dir}/procedural.json")
+    _ws_streamers = {}
     _ws_streamer = WebSocketContextStreamer()
     logger.info(f"WebSocket streamer initialized with {len(_ws_streamer._connections)} connections")
     yield
     _episodic_memory = _semantic_memory = _procedural_memory = None
+    _ws_streamers = {}
     _ws_streamer = None
 
 
