@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi.testclient import TestClient
+from starlette.websockets import WebSocket
 
 from riks_context_engine.api import server as server_module
 from riks_context_engine.api.server import (
@@ -21,7 +21,6 @@ from riks_context_engine.api.server import (
     WSContextUpdate,
     app,
 )
-from starlette.websockets import WebSocket
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +43,6 @@ def reset_engine():
 def streamer():
     """Return a fresh WebSocketContextStreamer instance."""
     return WebSocketContextStreamer()
-
 
 
 # ─── WSClientMessage model tests ─────────────────────────────────────────────
@@ -366,8 +364,11 @@ class TestWSAuthFailClosedEndpoint:
         monkeypatch.setattr(server_module, "API_KEY", "k1")
         sent: list[dict] = []
         ws = _make_ws(
-            {"type": "websocket", "headers": [(b"x-api-key", b"k1"), (b"x-tenant-id", b"t1")],
-             "query_string": b""},
+            {
+                "type": "websocket",
+                "headers": [(b"x-api-key", b"k1"), (b"x-tenant-id", b"t1")],
+                "query_string": b"",
+            },
             sent,
         )
         accepted: list = []
@@ -396,13 +397,15 @@ class TestWSAuthFailClosedEndpoint:
         await server_module.websocket_context_stream(ws)
         assert accepted, "query-param credentials must reach accept()"
 
-    @pytest.mark.parametrize("headers,query", [
-        ([], b""),                                   # no key at all
-        ([(b"x-api-key", b"wrong")], b""),          # wrong header key
-        ([], b"api_key=wrong"),                     # wrong query key
-    ])
-    async def test_reject_auth_before_accept(self, monkeypatch: pytest.MonkeyPatch,
-                                             headers, query):
+    @pytest.mark.parametrize(
+        "headers,query",
+        [
+            ([], b""),  # no key at all
+            ([(b"x-api-key", b"wrong")], b""),  # wrong header key
+            ([], b"api_key=wrong"),  # wrong query key
+        ],
+    )
+    async def test_reject_auth_before_accept(self, monkeypatch: pytest.MonkeyPatch, headers, query):
         monkeypatch.setattr(server_module, "API_KEY", "k1")
         sent: list[dict] = []
         ws = _make_ws({"type": "websocket", "headers": headers, "query_string": query}, sent)
@@ -413,20 +416,25 @@ class TestWSAuthFailClosedEndpoint:
         ws.accept = _reject_accept
         await server_module.websocket_context_stream(ws)
         # Exactly one ASGI close with the auth code, nothing else.
-        assert sent == [{"type": "websocket.close", "code": WS_CLOSE_UNAUTHORIZED,
-                         "reason": "Unauthorized"}]
+        assert sent == [
+            {"type": "websocket.close", "code": WS_CLOSE_UNAUTHORIZED, "reason": "Unauthorized"}
+        ]
         # C3: rejected connection never enters any streamer state.
         assert server_module._ws_streamers == {}
         assert server_module._ws_streamer is None
 
-    @pytest.mark.parametrize("headers,query", [
-        ([], b""),                        # missing tenant
-        ([(b"x-tenant-id", b"")], b""),   # empty tenant header
-        ([(b"x-tenant-id", b"bad tenant!")], b""),  # malformed tenant
-        ([], b"tenant_id=%20"),           # malformed query tenant
-    ])
-    async def test_reject_tenant_before_accept(self, monkeypatch: pytest.MonkeyPatch,
-                                               headers, query):
+    @pytest.mark.parametrize(
+        "headers,query",
+        [
+            ([], b""),  # missing tenant
+            ([(b"x-tenant-id", b"")], b""),  # empty tenant header
+            ([(b"x-tenant-id", b"bad tenant!")], b""),  # malformed tenant
+            ([], b"tenant_id=%20"),  # malformed query tenant
+        ],
+    )
+    async def test_reject_tenant_before_accept(
+        self, monkeypatch: pytest.MonkeyPatch, headers, query
+    ):
         monkeypatch.setattr(server_module, "API_KEY", "k1")
         ws = _make_ws(
             {"type": "websocket", "headers": headers, "query_string": query},
@@ -441,8 +449,13 @@ class TestWSAuthFailClosedEndpoint:
 
         ws.accept = _reject_accept
         await server_module.websocket_context_stream(ws)
-        assert sent == [{"type": "websocket.close", "code": WS_CLOSE_TENANT_REQUIRED,
-                         "reason": "Invalid or missing tenant"}]
+        assert sent == [
+            {
+                "type": "websocket.close",
+                "code": WS_CLOSE_TENANT_REQUIRED,
+                "reason": "Invalid or missing tenant",
+            }
+        ]
         assert server_module._ws_streamers == {}
 
     async def test_local_mode_open_when_no_api_key(self, monkeypatch: pytest.MonkeyPatch):
@@ -478,8 +491,9 @@ class TestWSAuthFailClosedEndpoint:
 
         ws.accept = _reject_accept
         await server_module.websocket_context_stream(ws)
-        assert sent == [{"type": "websocket.close", "code": WS_CLOSE_UNAUTHORIZED,
-                         "reason": "Unauthorized"}]
+        assert sent == [
+            {"type": "websocket.close", "code": WS_CLOSE_UNAUTHORIZED, "reason": "Unauthorized"}
+        ]
 
 
 class TestWSAuthHelpers:
@@ -487,35 +501,45 @@ class TestWSAuthHelpers:
 
     async def test_authenticate_header_match(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(server_module, "API_KEY", "k1")
-        ws = _make_ws({"type": "websocket", "headers": [(b"x-api-key", b"k1")],
-                       "query_string": b""}, [])
+        ws = _make_ws(
+            {"type": "websocket", "headers": [(b"x-api-key", b"k1")], "query_string": b""}, []
+        )
         assert server_module._ws_authenticate(ws) is True
 
     async def test_authenticate_query_match(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(server_module, "API_KEY", "k1")
-        ws = _make_ws({"type": "websocket", "headers": [],
-                       "query_string": b"api_key=k1"}, [])
+        ws = _make_ws({"type": "websocket", "headers": [], "query_string": b"api_key=k1"}, [])
         assert server_module._ws_authenticate(ws) is True
 
     async def test_authenticate_wrong_key(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(server_module, "API_KEY", "k1")
-        ws = _make_ws({"type": "websocket", "headers": [(b"x-api-key", b"k2")],
-                       "query_string": b""}, [])
+        ws = _make_ws(
+            {"type": "websocket", "headers": [(b"x-api-key", b"k2")], "query_string": b""}, []
+        )
         assert server_module._ws_authenticate(ws) is False
 
     async def test_tenant_from_header(self, monkeypatch: pytest.MonkeyPatch):
-        ws = _make_ws({"type": "websocket", "headers": [(b"x-tenant-id", b"tenant-1")],
-                       "query_string": b""}, [])
+        ws = _make_ws(
+            {"type": "websocket", "headers": [(b"x-tenant-id", b"tenant-1")], "query_string": b""},
+            [],
+        )
         assert server_module._ws_resolve_tenant(ws) == "tenant-1"
 
     async def test_tenant_from_query(self, monkeypatch: pytest.MonkeyPatch):
-        ws = _make_ws({"type": "websocket", "headers": [],
-                       "query_string": b"tenant_id=tenant-2"}, [])
+        ws = _make_ws(
+            {"type": "websocket", "headers": [], "query_string": b"tenant_id=tenant-2"}, []
+        )
         assert server_module._ws_resolve_tenant(ws) == "tenant-2"
 
     async def test_tenant_malformed_returns_none(self):
-        ws = _make_ws({"type": "websocket", "headers": [(b"x-tenant-id", b"bad tenant!")],
-                       "query_string": b""}, [])
+        ws = _make_ws(
+            {
+                "type": "websocket",
+                "headers": [(b"x-tenant-id", b"bad tenant!")],
+                "query_string": b"",
+            },
+            [],
+        )
         assert server_module._ws_resolve_tenant(ws) is None
 
     async def test_tenant_missing_returns_none(self):
@@ -526,4 +550,3 @@ class TestWSAuthHelpers:
         """Pin the convention: 1008 for auth (RFC standard), 4004 private-use."""
         assert WS_CLOSE_UNAUTHORIZED == 1008
         assert WS_CLOSE_TENANT_REQUIRED == 4004
-
