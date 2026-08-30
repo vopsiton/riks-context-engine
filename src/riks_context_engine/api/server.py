@@ -781,8 +781,18 @@ async def websocket_context_stream(websocket: WebSocket) -> None:
 
     try:
         while True:
-            raw = await websocket.receive_bytes()
-            await streamer.handle_client_message(client_id, raw)
+            # NOTE: raw receive() rather than receive_bytes(): TestClient
+            # delivers server->client frames as {'text': ...} messages, and
+            # receive_bytes() would raise on text frames (pre-existing
+            # transport quirk). Real servers (uvicorn) deliver text frames as
+            # 'bytes' per ASGI semantics, so this works for both.
+            raw = await websocket.receive()
+            data = raw.get("bytes")
+            if data is None and isinstance(raw.get("text"), str):
+                data = raw["text"].encode()
+            if data is None:  # disconnect or other control frame
+                continue
+            await streamer.handle_client_message(client_id, data)
     except WebSocketDisconnect:
         logger.debug(f"WebSocket client {client_id} disconnected")
     except Exception as exc:
